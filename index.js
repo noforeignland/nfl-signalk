@@ -402,7 +402,7 @@ module.exports = function (app) {
           try {
             const point = JSON.parse(line);
             if (isValidLatitude(point.lat) && isValidLongitude(point.lon)) {
-              track.push([point.lat, point.lon, point.ms || new Date(point.t).getTime()])
+              track.push([point.ms,point.lat, point.lon])
               lastTimestamp = point.t
             }
           } catch (error) {
