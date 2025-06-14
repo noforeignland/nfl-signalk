@@ -179,10 +179,15 @@ module.exports = function (app) {
           let timestamp = update.timestamp;
           for (value of update.values) {
 			  
-		  if (value.value.latitude === 0 && value.value.longitude === 0) {
-        		// Skip saving point with latitude and longitude both equal to 0
-        		return;
-           }
+		
+			if (
+			  Math.abs(value.value.latitude) <= 0.01 &&
+			  Math.abs(value.value.longitude) <= 0.01
+			) {
+			  // Coordinates are within ±0.1 of (0,0)
+			  return;
+			}
+			
             // app.debug(`value:`, value);
 
             if (!shouldDoLog) {
