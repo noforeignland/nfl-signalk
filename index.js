@@ -406,10 +406,13 @@ module.exports = function (app) {
         if (line) {
           try {
             const point = JSON.parse(line);
-            if (isValidLatitude(point.lat) && isValidLongitude(point.lon)) {
-              track.push([point.t,point.lat, point.lon])
-              lastTimestamp = point.t
-            }
+         
+			const timestamp = new Date(point.t).getTime();
+			if (!isNaN(timestamp) && isValidLatitude(point.lat) && isValidLongitude(point.lon)) {
+			  track.push([timestamp, point.lat, point.lon]);
+			  lastTimestamp = timestamp;
+			}
+			
           } catch (error) {
             app.debug('could not parse line from track file:', line);
           }
