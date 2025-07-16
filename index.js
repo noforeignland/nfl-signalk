@@ -220,6 +220,8 @@ module.exports = function(app) {
 								// SK sometimes messes up timestamps, when that happens we throw the update
 								return;
 							}
+							lastPosition = { pos: value.value, timestamp, currentTime: new Date().getTime() };
+
 							const distance = equirectangularDistance(lastPosition.pos, value.value)
 							if (options.minMove && distance < options.minMove) {
 								return;
@@ -228,8 +230,9 @@ module.exports = function(app) {
 							//   app.debug('got error position', value.value, 'ignoring...');
 							//   return;
 							// }
+						} else{
+							lastPosition = { pos: value.value, timestamp, currentTime: new Date().getTime() };
 						}
-						lastPosition = { pos: value.value, timestamp, currentTime: new Date().getTime() };
 
 						await savePoint(lastPosition);
 						if (options.minSpeed) {
