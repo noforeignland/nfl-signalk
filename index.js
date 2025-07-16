@@ -221,6 +221,7 @@ module.exports = function(app) {
 								return;
 							}
 							lastPosition = { pos: value.value, timestamp, currentTime: new Date().getTime() };
+							app.debug('Updated lastPosition:', lastPosition);
 
 							const distance = equirectangularDistance(lastPosition.pos, value.value)
 							if (options.minMove && distance < options.minMove) {
@@ -394,7 +395,7 @@ module.exports = function(app) {
 		        return;
 		    }
 		    const url = options.apiUrl || "https://www.noforeignland.com/home/api/v1/boat/tracking/track";
-		    const timestamp = new Date(lastPosition.timestamp).getTime();
+		    const timestamp = Date.now();//we want to trigger a refresh on NFL even if we didn't get a delta
 		    const lat = lastPosition.pos.latitude;
 		    const lon = lastPosition.pos.longitude;
 			
