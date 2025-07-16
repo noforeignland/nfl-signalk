@@ -10,7 +10,7 @@ const fetch = require('node-fetch');
 const isReachable = require('is-reachable');
 const sendEmail = require('./sendEmail');
 const createGPX = require('./createGPX');
-const apiUrl = 'https://www.noforeignland.com/home/api/v1/boat/tracking/track';
+const defaultApiUrl = 'https://www.noforeignland.com/home/api/v1/boat/tracking/track';
 const pluginApiKey = '0ede6cb6-5213-45f5-8ab4-b4836b236f97';
 // const msToKn = 1.944;
 
@@ -90,7 +90,7 @@ module.exports = function(app) {
 				"description": "Keeps your boat active on NFL in your current location even if you do not move",
 				"default": true
 			},
-			"apiUrl": {
+			"defaultApiUrl": {
 			  "type": "string",
 			  "title": "NFL tracking API endpoint",
 			  "description": "Change only if NFL gives you a different endpoint.",
