@@ -10,15 +10,14 @@ const fetch = require('node-fetch');
 const isReachable = require('is-reachable');
 const sendEmail = require('./sendEmail');
 const createGPX = require('./createGPX');
-const defaultApiUrl = 'https://www.noforeignland.com/home/api/v1/boat/tracking/track';
 const pluginApiKey = '0ede6cb6-5213-45f5-8ab4-b4836b236f97';
 // const msToKn = 1.944;
 
 
 module.exports = function(app) {
 	var plugin = {};
-	plugin.id = 'signalk-to-noforeignland-beta';
-	plugin.name = 'SignalK to Noforeignland-beta';
+	plugin.id = 'signalk-to-noforeignland';
+	plugin.name = 'SignalK to Noforeignland';
 	plugin.description = 'SignalK track logger to noforeignland.com';
 
 	plugin.schema = {
@@ -90,11 +89,11 @@ module.exports = function(app) {
 				"description": "Keeps your boat active on NFL in your current location even if you do not move",
 				"default": true
 			},
-			"defaultApiUrl": {
+			"apiUrl": {
 			  "type": "string",
 			  "title": "NFL tracking API endpoint",
 			  "description": "Change only if NFL gives you a different endpoint.",
-			  "default": defaultApiUrl
+			  "default": "https://www.noforeignland.com/home/api/v1/boat/tracking/track"
 			}
 
 		}
@@ -241,7 +240,7 @@ module.exports = function(app) {
 							initialSent = true;
 							app.debug('sending initial fix');
 							if (await testInternet()) {
-								await sendData();
+								await sendLatestPoint();
 								lastSentTime = Date.now();
 							}
 						}
@@ -335,12 +334,11 @@ module.exports = function(app) {
 		async function interval() {
 			const now = Date.now();
 			const twentyFourHrs = 24 * 3600 * 1000;
-
+			//const twentyFourHrs =  60 * 1000;
 			if (options.ping && (!lastSentTime || now - lastSentTime >= twentyFourHrs)) {
 				app.debug('24 hrs elapsed since last send, pushing periodic fix');
 				if (await testInternet()) {
-					await sendData();
-					lastSentTime = now;
+					await sendLatestPoint();
 				}
 				return;
 			}
@@ -386,6 +384,54 @@ module.exports = function(app) {
 			app.debug(`'${trackFile}'.size=${size} ${trackFile}'.exists=${exists}`);
 			return size > 0;
 		}
+		
+		async function sendLatestPoint() {
+		    if (!lastPosition) {
+		        app.debug('No lastPosition cached, skipping 24hr ping');
+		        return;
+		    }
+		    const url = options.apiUrl || "https://www.noforeignland.com/home/api/v1/boat/tracking/track";
+		    const timestamp = new Date(lastPosition.timestamp).getTime();
+		    const lat = lastPosition.pos.latitude;
+		    const lon = lastPosition.pos.longitude;
+			
+			if (Math.abs(lat) <= 0.01 &&
+				Math.abs(lon) <= 0.01
+			) {
+				return;
+			}
+		    if (!isValidLatitude(lat) || !isValidLongitude(lon)) {
+		        app.debug('Invalid lastPosition for 24hr ping, skipping');
+		        return;
+		    }
+		    const singlePointTrack = [[timestamp, lat, lon]];
+		    const params = new URLSearchParams();
+		    params.append('timestamp', timestamp);
+		    params.append('track', JSON.stringify(singlePointTrack));
+		    params.append('boatApiKey', options.boatApiKey);
+
+		    const headers = {
+		        'X-NFL-API-Key': pluginApiKey
+		    };
+			   app.debug('Sending latest position to API as single-point track', singlePointTrack);
+		    try {
+		        const response = await fetch(url, { method: 'POST', body: params, headers: new fetch.Headers(headers) });
+		        if (response.ok) {
+		            const responseBody = await response.json();
+		            if (responseBody.status === 'ok') {
+		                app.debug('Latest position successfully sent to API');
+		            } else {
+		                app.debug('API responded with error:', responseBody);
+		            }
+		        } else {
+		            app.debug('API responded with HTTP error:', response.status, response.statusText);
+		        }
+		    } catch (err) {
+		        app.debug('Failed to send latest position to API:', err);
+		    }
+		}
+
+		
 
 		async function sendData() {
 			if (options.boatApiKey) {
@@ -396,8 +442,8 @@ module.exports = function(app) {
 		}
 
 		async function sendApiData() {
-			const url = options.apiUrl || defaultApiUrl;   
-
+			const url = options.apiUrl;   
+		    app.debug('sending to ' + url)
 			app.debug('sending the data');
 			const trackData = await createTrack(path.join(options.trackDir, routeSaveName));
 			if (!trackData) {
