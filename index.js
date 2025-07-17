@@ -446,7 +446,7 @@ module.exports = function(app) {
 		}
 
 		async function sendApiData() {
-			const url = options.apiUrl;   
+			const url = options.apiUrl || "https://www.noforeignland.com/home/api/v1/boat/tracking/track";
 		    app.debug('sending to ' + url)
 			app.debug('sending the data');
 			const trackData = await createTrack(path.join(options.trackDir, routeSaveName));
