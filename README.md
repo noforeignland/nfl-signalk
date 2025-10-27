@@ -1,6 +1,14 @@
 # SignalK To NFL
 Effortlessly log your boat's movement to **noforeignland.com**
 
+**BETA VERSION** - This is a testing release. Use with caution in production environments.
+
+## Testing Notes
+- This version includes experimental features
+- Report issues on GitHub
+- Not recommended for production use
+
+
 ## Features
 * Automatically log your position to NFL
 * Send detailed tracks to log your entire trip and not just your final position

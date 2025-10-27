@@ -8,7 +8,6 @@ const CronJob = require('cron').CronJob;
 const readline = require('readline');
 const fetch = require('node-fetch');
 const isReachable = require('is-reachable');
-const sendEmail = require('./sendEmail');
 const createGPX = require('./createGPX');
 const apiUrl = 'https://www.noforeignland.com/home/api/v1/boat/tracking/track';
 const pluginApiKey = '0ede6cb6-5213-45f5-8ab4-b4836b236f97';
@@ -25,7 +24,7 @@ module.exports = function (app) {
     "title": plugin.name,
     "description": "Some parameters need for use",
     "type": "object",
-    "required": ["emailCron", "boatApiKey"],
+    "required": ["apiCron", "boatApiKey"],
     "properties": {
       "trackFrequency": {
         "type": "integer",
@@ -45,7 +44,7 @@ module.exports = function (app) {
         "description": "To keep file sizes small we only log positions if boat speed goes above this value to minimize recording position on anchor or mooring (if set to 0 will log every move)",
         "default": 1.5
       },
-      "emailCron": {
+      "apiCron": {
         "type": "string",
         "title": "Send attempt CRON",
         "description": "We send the tracking data to NFL once in a while, you can set the schedule with this setting. CRON format: https://crontab.guru/",
@@ -66,7 +65,7 @@ module.exports = function (app) {
         "type": "boolean",
         "title": "Attempt sending location while moving",
         "description": "Should the plugin attempt to send tracking data to NFL while detecting the vessel is moving or only when stopped?",
-        "default": false
+        "default": true
       },
       "filterSource": {
         "type": "string",
@@ -83,21 +82,27 @@ module.exports = function (app) {
         "title": "Should keep track files on disk?",
         "description": "If you have a lot of hard drive space you can keep the track files for logging purposes.",
         "default": false
+      },
+      "ping_api_every_24h": {
+				"type": "boolean",
+				"title": "Should I force a send every 24 hours",
+				"description": "Keeps your boat active on NFL in your current location even if you do not move",
+				"default": true
       }
     }
   };
 
-  var unsubscribes = [];
-  var unsubscribesControl = [];
-  var routeSaveName = 'nfl-track.jsonl';
-  let lastPosition;
-  let upSince;
-  let cron;
-  const creator = 'signalk-track-logger';
-  const defaultTracksDir = 'track';
-  // const maxAllowedSpeed = 100;
+var unsubscribes = [];
+var unsubscribesControl = [];
+var routeSaveName = 'nfl-track.jsonl';
+let lastPosition;
+let upSince;
+let cron;
+const creator = 'signalk-track-logger';
+const defaultTracksDir = 'track';
+// const maxAllowedSpeed = 100;
 
-  plugin.start = function (options, restartPlugin) {
+plugin.start = function (options, restartPlugin) {
     if (!options.trackDir) options.trackDir = defaultTracksDir;
     if (!path.isAbsolute(options.trackDir)) options.trackDir = path.join(__dirname, options.trackDir);
     //app.debug('options.trackDir=',options.trackDir);
@@ -105,7 +110,7 @@ module.exports = function (app) {
       plugin.stop();
       return;
     }
-
+    
     app.debug('track logger started, now logging to', options.trackDir);
     app.setPluginStatus(`Started`);
 
@@ -178,26 +183,22 @@ module.exports = function (app) {
           }
           let timestamp = update.timestamp;
           for (value of update.values) {
-			  
-		
-			if (
-			  Math.abs(value.value.latitude) <= 0.01 &&
-			  Math.abs(value.value.longitude) <= 0.01
-			) {
-			  // Coordinates are within ±0.1 of (0,0)
-			  return;
-			}
-			
+            if (
+              Math.abs(value.value.latitude) <= 0.01 &&
+              Math.abs(value.value.longitude) <= 0.01
+            ) {
+              // Coordinates are within ±0.1 of (0,0)
+              app.debug('GPS coordinates near (0,0), ignoring point to avoid invalid data logging.');
+              return;
+            }
             // app.debug(`value:`, value);
-
             if (!shouldDoLog) {
               return;
             }
             if (!isValidLatitude(value.value.latitude) || !isValidLongitude(value.value.longitude)) {
+              app.debug('got invalid position, ignoring...', value.value);
               return;
             }
-            
-            
             if (lastPosition) {
               if (new Date(lastPosition.timestamp).getTime() > new Date(timestamp).getTime()) {
                 app.debug('got error in timestamp:', timestamp, 'is earlier than previous:', lastPosition.timestamp);
@@ -208,17 +209,29 @@ module.exports = function (app) {
               if (options.minMove && distance < options.minMove) {
                 return;
               }
+              // DW - Uncleaer why this was commented out - leaving commented for now
               // if (calculatedSpeed(distance, (timestamp - lastPosition.timestamp) / 1000) > maxAllowedSpeed) {
               //   app.debug('got error position', value.value, 'ignoring...');
               //   return;
               // }
             }
             lastPosition = { pos: value.value, timestamp, currentTime: new Date().getTime() };
-            
+            //DW - unsure why await here - leaving for now, order seems confused.
             await savePoint(lastPosition);
             if (options.minSpeed) {
-              app.debug('setting shouldDoLog to false');
+              app.debug('options.minSpeed - setting shouldDoLog to false');
               shouldDoLog = false;
+            }
+            // 24h ping to keep boat active on NFL
+            if (options.ping_api_every_24h) {
+              const timeSinceLastPoint = (new Date().getTime() - lastPosition.currentTime);
+              if (timeSinceLastPoint >= 24 * 60 * 60 * 1000) {
+                app.debug('24h since last point, forcing save of point to keep boat active on NFL');
+                lastPosition = { pos: value.value, timestamp, currentTime: new Date().getTime() };
+                await savePoint(lastPosition);
+                shouldDoLog = true;
+                return;
+              }
             }
           };
         };
@@ -341,13 +354,15 @@ module.exports = function (app) {
       return size > 0;
     }
 
+
     async function sendData() {
       if (options.boatApiKey) {
         sendApiData();
-      } else {
-        sendEmailData();
+      } else { 
+      app.debug('Failed to send track - no boat API key set in plugin settings.'); 
       }
     }
+
 
     async function sendApiData() {
       app.debug('sending the data');
@@ -423,47 +438,20 @@ module.exports = function (app) {
       }
     }
 
-    async function sendEmailData() {
-      app.debug('sending the data');
-      const gpxFiles = await createGPX({ input: path.join(options.trackDir, routeSaveName), outputDir: options.trackDir, creator });
-      app.debug('created GPX files', gpxFiles);
-      try {
-        for (let file of gpxFiles) {
-          app.debug('sending', file);
-          try {
-            !await sendEmail({
-              emailService: options.emailService,
-              user: options.emailUser,
-              password: options.emailPassword,
-              from: options.emailFrom,
-              to: options.emailTo,
-              trackFile: file
-            })
-          } catch (err) {
-            app.debug('Sending email failed:', err);
-            return;
-          }
-        }
-      } finally {
-        for (let file of gpxFiles) {
-          app.debug('deleting', file);
-          await fs.rm(file);
-        }
-      }
-      await fs.rm(path.join(options.trackDir, routeSaveName));
-    }
+  // Adjust default CRON if still set to default  
 	//every 10 minute but staggered to the second so we don't all send at once.
-	if (!options.emailCron || options.emailCron === '*/10 * * * *') {
+	if (!options.apiCron || options.apiCron === '*/10 * * * *') {
 	   const startMinute = Math.floor(Math.random() * 10);  // Random minute within the 10-minute range
 	   const startSecond = Math.floor(Math.random() * 60);  // Random second within the minute
-	   options.emailCron = `${startSecond} ${startMinute}/10 * * * *`;  // Every 10 minutes, starting at a random minute and second within each 10-minute block
+	   options.apiCron = `${startSecond} ${startMinute}/10 * * * *`;  // Every 10 minutes, starting at a random minute and second within each 10-minute block
 	 }
+
 
     upSince = new Date().getTime();
 
-    app.debug('Setting CRON to ', options.emailCron);
+    app.debug('Setting CRON to ', options.apiCron);
     cron = new CronJob(
-      options.emailCron,
+      options.apiCron,
       interval
     );
     cron.start();

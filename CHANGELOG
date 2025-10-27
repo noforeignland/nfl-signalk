@@ -1,0 +1,9 @@
+0.1.22-beta.1
+
+* CONFIG: Attempt sending location while moving - Default changed from false to true
+* CONFIG: Ping added for 24h ping if boat is not moved. - Default: true
+* Package.json - Nodemailer dependency removed
+* Marked for removal - Depricated "sendEmailData" function.
+* REMOVED - sendEmail.js
+* CLEANUP - Renamed emaiCron to apiCron
+* NEW: 24h api ping, when enabled, even if boat didn't move.
