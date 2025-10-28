@@ -14,3 +14,4 @@
 
 0.1.23-beta.1
 * Renamed branch to follow the release versions. 
+* CLEANUP - More debug info for the SK dashboard using this.app.setPluginError

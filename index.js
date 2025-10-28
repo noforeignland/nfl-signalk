@@ -1,4 +1,3 @@
-// index.js
 const { EOL } = require('os');
 const internetTestAddress = 'google.com';
 const internetTestTimeout = 1000;
@@ -373,6 +372,7 @@ class SignalkToNoforeignland {
       await this.sendApiData();
     } else {
       this.app.debug('Failed to send track - no boat API key set in plugin settings.');
+      this.app.setPluginError(`Failed to send track - no boat API key set in plugin settings.`);
     }
   }
 
@@ -381,6 +381,7 @@ class SignalkToNoforeignland {
     const trackData = await this.createTrack(path.join(this.options.trackDir, routeSaveName));
     if (!trackData) {
       this.app.debug('Recorded track did not contain any valid track points, aborting sending.');
+      this.app.setPluginSError(`Failed to send track - Recorded track did not contain any valid track points, aborting sending.`);
       return;
     }
     this.app.debug('created track data with timestamp:', new Date(trackData.timestamp));
@@ -397,6 +398,7 @@ class SignalkToNoforeignland {
         const responseBody = await response.json();
         if (responseBody.status === 'ok') {
           this.app.debug('Track successfully sent to API');
+          this.app.setPluginStatus(`Started - last Track sent successfully at ${new Date().toLocaleString()}`);
           if (this.options.keepFiles) {
             const filename = new Date().toJSON().slice(0, 19).replace(/:/g, '') + '-nfl-track.jsonl';
             this.app.debug('moving and keeping track file: ', filename);
@@ -407,12 +409,15 @@ class SignalkToNoforeignland {
           }
         } else {
           this.app.debug('Could not send track to API, returned response json:', responseBody);
+          this.app.setPluginError(`Failed to send track - check logs for details.`);
         }
       } else {
         this.app.debug('Could not send track to API, returned response code:', response.status, response.statusText);
+        this.app.setPluginError(`Failed to send track - check logs for details.`);
       }
     } catch (err) {
       this.app.debug('Could not send track to API due to error:', err);
+      this.app.setPluginError(`Failed to send track - check logs for details.`);
     }
   }
 
@@ -432,6 +437,7 @@ class SignalkToNoforeignland {
           }
         } catch (error) {
           this.app.debug('could not parse line from track file:', line);
+          this.app.setPluginError(`Failed to generate GPX - check logs for details.`);
         }
       }
     }
