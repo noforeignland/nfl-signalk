@@ -7,7 +7,6 @@ const CronJob = require('cron').CronJob;
 const readline = require('readline');
 const fetch = require('node-fetch');
 const isReachable = require('is-reachable');
-const createGPX = require('./createGPX');
 
 const apiUrl = 'https://www.noforeignland.com/home/api/v1/boat/tracking/track';
 const pluginApiKey = '0ede6cb6-5213-45f5-8ab4-b4836b236f97';
@@ -437,7 +436,7 @@ class SignalkToNoforeignland {
           }
         } catch (error) {
           this.app.debug('could not parse line from track file:', line);
-          this.app.setPluginError(`Failed to generate GPX - check logs for details.`);
+          this.app.setPluginError(`Failed could not parse line from track file - check logs for details.`);
         }
       }
     }
