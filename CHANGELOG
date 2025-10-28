@@ -7,3 +7,8 @@
 * REMOVED - sendEmail.js
 * CLEANUP - Renamed emaiCron to apiCron
 * NEW: 24h api ping, when enabled, even if boat didn't move.
+
+0.1.22-beta.2
+
+* CLEANUP and move to Object Oriented Javascript
+
