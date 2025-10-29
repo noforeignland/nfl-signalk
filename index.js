@@ -219,6 +219,10 @@ class SignalkToNoforeignland {
           this.app.debug('GPS coordinates near (0,0), ignoring point to avoid invalid data logging.');
           return;
         }
+        if (!this.isValidLatitude(value.value.latitude) || !this.isValidLongitude(value.value.longitude)) {
+          this.app.debug('got invalid position, ignoring...', value.value);
+          return;
+        }
         // 24h ping to keep boat active on NFL
         if (this.options.ping_api_every_24h && this.lastPosition) {
           const timeSinceLastPoint = (new Date().getTime() - this.lastPosition.currentTime);
@@ -231,10 +235,6 @@ class SignalkToNoforeignland {
           }
         }
         if (!getShouldDoLog()) {
-          return;
-        }
-        if (!this.isValidLatitude(value.value.latitude) || !this.isValidLongitude(value.value.longitude)) {
-          this.app.debug('got invalid position, ignoring...', value.value);
           return;
         }
         if (this.lastPosition) {
