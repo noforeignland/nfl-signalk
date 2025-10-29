@@ -196,10 +196,10 @@ class SignalkToNoforeignland {
             return;
           }
           update.values.forEach(value => {
-            // value.value is sog in m/s so 'sog*2' is in knots (original code used *2)
-            if (!shouldDoLog && this.options.minSpeed < value.value * 2) {
-              this.app.debug('setting shouldDoLog to true');
-              shouldDoLog = true;
+            const speedInKnots = value.value * 1.94384; 
+            if (!shouldDoLog && this.options.minSpeed < speedInKnots) { 
+              this.app.debug('setting shouldDoLog to true, speed:', speedInKnots.toFixed(2), 'knots'); 
+              shouldDoLog = true; 
             }
           });
         });
@@ -207,58 +207,68 @@ class SignalkToNoforeignland {
     }
   }
 
-  // doOnValue helper is a bit special: we pass closures for shouldDoLog
   async doOnValue(getShouldDoLog, setShouldDoLog, delta) {
-    for (const update of delta.updates) {
-      if (this.options.filterSource && update.$source !== this.options.filterSource) {
+  for (const update of delta.updates) {
+    if (this.options.filterSource && update.$source !== this.options.filterSource) {
+      return;
+    }
+    const timestamp = update.timestamp;
+    for (const value of update.values) {
+      // Validierung: GPS nahe (0,0)
+      if (Math.abs(value.value.latitude) <= 0.01 && Math.abs(value.value.longitude) <= 0.01) {
+        this.app.debug('GPS coordinates near (0,0), ignoring point to avoid invalid data logging.');
         return;
       }
-      const timestamp = update.timestamp;
-      for (const value of update.values) {
-        if (Math.abs(value.value.latitude) <= 0.01 && Math.abs(value.value.longitude) <= 0.01) {
-          this.app.debug('GPS coordinates near (0,0), ignoring point to avoid invalid data logging.');
-          return;
-        }
-        if (!this.isValidLatitude(value.value.latitude) || !this.isValidLongitude(value.value.longitude)) {
-          this.app.debug('got invalid position, ignoring...', value.value);
-          return;
-        }
-        // 24h ping to keep boat active on NFL
-        if (this.options.ping_api_every_24h && this.lastPosition) {
-          const timeSinceLastPoint = (new Date().getTime() - this.lastPosition.currentTime);
-          if (timeSinceLastPoint >= 24 * 60 * 60 * 1000) {
-            this.app.debug('24h since last point, forcing save of point to keep boat active on NFL');
-            this.lastPosition = { pos: value.value, timestamp, currentTime: new Date().getTime() };
-            await this.savePoint(this.lastPosition);
-            //setShouldDoLog(true);
-            return;
-          }
-        }
-        if (!getShouldDoLog()) {
-          return;
-        }
-        if (this.lastPosition) {
-          if (new Date(this.lastPosition.timestamp).getTime() > new Date(timestamp).getTime()) {
-            this.app.debug('got error in timestamp:', timestamp, 'is earlier than previous:', this.lastPosition.timestamp);
-            return;
-          }
-          const distance = this.equirectangularDistance(this.lastPosition.pos, value.value);
-          if (this.options.minMove && distance < this.options.minMove) {
-            return;
-          }
-        }
+      
+      // Validate for valid lat/lon
+      if (!this.isValidLatitude(value.value.latitude) || !this.isValidLongitude(value.value.longitude)) {
+        this.app.debug('got invalid position, ignoring...', value.value);
+        return;
+      }
 
-        this.lastPosition = { pos: value.value, timestamp, currentTime: new Date().getTime() };
-        await this.savePoint(this.lastPosition);
+      // 24h-Ping Check: Setze Flag, aber breche NICHT ab
+      let force24hSave = false;
+      if (this.options.ping_api_every_24h && this.lastPosition) {
+        const timeSinceLastPoint = (new Date().getTime() - this.lastPosition.currentTime);
+        if (timeSinceLastPoint >= 24 * 60 * 60 * 1000) {
+          this.app.debug('24h since last point, forcing save of point to keep boat active on NFL');
+          force24hSave = true;
+        }
+      }
 
-        if (this.options.minSpeed) {
-          this.app.debug('options.minSpeed - setting shouldDoLog to false');
-          setShouldDoLog(false);
+      // Wenn wir nicht loggen sollen UND es kein 24h-Force ist, dann raus
+      if (!force24hSave && !getShouldDoLog()) {
+        return;
+      }
+
+      // Wenn wir eine letzte Position haben, prüfe Timestamp und Distanz
+      if (this.lastPosition && !force24hSave) {
+        // Timestamp-Validierung
+        if (new Date(this.lastPosition.timestamp).getTime() > new Date(timestamp).getTime()) {
+          this.app.debug('got error in timestamp:', timestamp, 'is earlier than previous:', this.lastPosition.timestamp);
+          return;
         }
         
+        // Distance-Check (nur wenn NICHT 24h-Force)
+        const distance = this.equirectangularDistance(this.lastPosition.pos, value.value);
+        if (this.options.minMove && distance < this.options.minMove) {
+          this.app.debug('Distance', distance.toFixed(2), 'm is less than minMove', this.options.minMove, 'm - skipping');
+          return;
+        }
+      }
+
+      // Punkt speichern
+      this.lastPosition = { pos: value.value, timestamp, currentTime: new Date().getTime() };
+      await this.savePoint(this.lastPosition);
+
+      // shouldDoLog zurücksetzen wenn minSpeed aktiv ist
+      if (this.options.minSpeed) {
+        this.app.debug('options.minSpeed - setting shouldDoLog to false');
+        setShouldDoLog(false);
       }
     }
-  }
+  }}
+
 
   async savePoint(point) {
     const obj = {
@@ -335,19 +345,20 @@ class SignalkToNoforeignland {
     }
   }
 
-  checkBoatMoving() {
-    if (this.options.sendWhileMoving || !this.options.trackFrequency) {
-      return true;
-    }
-    const time = this.lastPosition ? this.lastPosition.currentTime : this.upSince;
-    const secsSinceLastPoint = (new Date().getTime() - time) / 1000;
-    if (secsSinceLastPoint > (this.options.trackFrequency * 2)) {
-      this.app.debug('Boat stopped moving, last move at least', secsSinceLastPoint, 'seconds ago');
-      return true;
-    } else {
-      this.app.debug('Boat is still moving, last move', secsSinceLastPoint, 'seconds ago');
-      return false;
-    }
+  checkBoatMoving() { 
+    if (!this.options.trackFrequency) { 
+      return true; // Kein Tracking → immer senden 
+    } 
+    const time = this.lastPosition ? this.lastPosition.currentTime : this.upSince; 
+    const secsSinceLastPoint = (new Date().getTime() - time) / 1000; 
+    const isMoving = secsSinceLastPoint <= (this.options.trackFrequency * 2); 
+    if (isMoving) { 
+      this.app.debug('Boat is still moving, last move', secsSinceLastPoint, 'seconds ago'); 
+      return this.options.sendWhileMoving; // Nur senden wenn gewünscht 
+    } else { 
+      this.app.debug('Boat stopped moving, last move at least', secsSinceLastPoint, 'seconds ago'); 
+      return true; // Immer senden wenn gestoppt 
+      } 
   }
 
   async testInternet() {
@@ -380,7 +391,7 @@ class SignalkToNoforeignland {
     const trackData = await this.createTrack(path.join(this.options.trackDir, routeSaveName));
     if (!trackData) {
       this.app.debug('Recorded track did not contain any valid track points, aborting sending.');
-      this.app.setPluginSError(`Failed to send track - Recorded track did not contain any valid track points, aborting sending.`);
+      this.app.setPluginError(`Failed to send track - Recorded track did not contain any valid track points, aborting sending.`);
       return;
     }
     this.app.debug('created track data with timestamp:', new Date(trackData.timestamp));
