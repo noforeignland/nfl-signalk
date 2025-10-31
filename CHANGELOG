@@ -16,3 +16,7 @@
 * Renamed branch to follow the release versions. 
 * CLEANUP - More debug info for the SK dashboard using this.app.setPluginError
 * CLEANUP - Removed CreateGPX, was only used for removed Email transmission of the track
+
+0.1.23
+* Final version after successful testing @MOIN and @KIAPA NUI
+
