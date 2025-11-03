@@ -1,3 +1,22 @@
+0.1.24
+* CHANGE: testInternet only uses ipv4 now, some users don't have ipv6 configured properly and where unable to reach the API, when testInternet returned false
+* NEW: PluginStatus on SK dashboard now shows last savePoint and last API transfer, so a user has more feedback what the app is doing without enabling the debug log and crawling though it.
+* CHANGE: Renamed CHANGELOG to CHANGELOG.md
+* CHANGE: CHANGELOG ORDER - newest on top.
+* Final version after successful testing SV MOIN and  SV KIAPA NUI
+
+0.1.23
+* Final version after successful testing SV MOIN and SV KIAPA NUI
+
+0.1.23-beta.1
+* Renamed branch to follow the release versions. 
+* CLEANUP - More debug info for the SK dashboard using this.app.setPluginError
+* CLEANUP - Removed CreateGPX, was only used for removed Email transmission of the track
+
+0.1.22-beta.2
+
+* CLEANUP and move to Object Oriented Javascript
+
 0.1.22-beta.1
 
 * CONFIG: Attempt sending location while moving - Default changed from false to true
@@ -8,20 +27,3 @@
 * CLEANUP - Renamed emaiCron to apiCron
 * NEW: 24h api ping, when enabled, even if boat didn't move.
 
-0.1.22-beta.2
-
-* CLEANUP and move to Object Oriented Javascript
-
-0.1.23-beta.1
-* Renamed branch to follow the release versions. 
-* CLEANUP - More debug info for the SK dashboard using this.app.setPluginError
-* CLEANUP - Removed CreateGPX, was only used for removed Email transmission of the track
-
-0.1.23
-* Final version after successful testing @MOIN and @KIAPA NUI
-
-0.1.24
-* CHANGE: testInternet only uses ipv4 now, some users don't have ipv6 configured properly and where unable to reach the API, when testInternet returned false
-* NEW: PluginStatus on SK dashboard now shows last savePoint and last API transfer, so a user has more feedback what the app is doing without enabling the debug log and crawling though it.
-* CHANGE: Renamed CHANGELOG to CHANGELOG.md
-* Final version after successful testing @MOIN and @KIAPA NUI
