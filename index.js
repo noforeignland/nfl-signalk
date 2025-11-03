@@ -1,4 +1,3 @@
-
 const { EOL } = require('os');
 const internetTestAddress = 'google.com';
 const internetTestTimeout = 1000;
@@ -8,578 +7,486 @@ const CronJob = require('cron').CronJob;
 const readline = require('readline');
 const fetch = require('node-fetch');
 const isReachable = require('is-reachable');
-const sendEmail = require('./sendEmail');
-const createGPX = require('./createGPX');
+
+const apiUrl = 'https://www.noforeignland.com/home/api/v1/boat/tracking/track';
 const pluginApiKey = '0ede6cb6-5213-45f5-8ab4-b4836b236f97';
-// const msToKn = 1.944;
+const defaultTracksDir = 'track';
+const routeSaveName = 'nfl-track.jsonl';
+
+class SignalkToNoforeignland {
+  constructor(app) {
+    this.app = app;
+    this.pluginId = 'signalk-to-noforeignland';
+    this.pluginName = 'SignalK to Noforeland';
+    this.creator = 'signalk-track-logger';
+
+    // runtime state
+    this.unsubscribes = [];
+    this.unsubscribesControl = [];
+    this.lastPosition = null;
+    this.upSince = null;
+    this.cron = null;
+    this.options = {};
+    this.lastSuccessfulTransfer = null;
+  }
+
+  getSchema() {
+    return {
+      title: this.pluginName,
+      description: 'Some parameters need for use',
+      type: 'object',
+      required: ['apiCron', 'boatApiKey'],
+      properties: {
+        trackFrequency: {
+          type: 'integer',
+          title: 'Position tracking frequency in seconds.',
+          description: 'To keep file sizes small we only log positions once in a while (unless you set this value to 0)',
+          default: 60
+        },
+        minMove: {
+          type: 'number',
+          title: 'Minimum boat move to log in meters',
+          description: 'To keep file sizes small we only log positions if a move larger than this size (if set to 0 will log every move)',
+          default: 50
+        },
+        minSpeed: {
+          type: 'number',
+          title: 'Minimum boat speed to log in knots',
+          description: 'To keep file sizes small we only log positions if boat speed goes above this value to minimize recording position on anchor or mooring (if set to 0 will log every move)',
+          default: 1.5
+        },
+        apiCron: {
+          type: 'string',
+          title: 'Send attempt CRON',
+          description: 'We send the tracking data to NFL once in a while, you can set the schedule with this setting.\nCRON format: https://crontab.guru/',
+          default: '*/10 * * * *'
+        },
+        boatApiKey: {
+          type: 'string',
+          title: 'Boat API key',
+          description: 'Boat API key from noforeignland.com. Can be found in Account > Settings > Boat tracking > API Key.\n*required only in API method is set*'
+        },
+        internetTestTimeout: {
+          type: 'number',
+          title: 'Timeout for testing internet connection in ms',
+          description: 'Set this number higher for slower computers and internet connections',
+          default: 2000
+        },
+        sendWhileMoving: {
+          type: 'boolean',
+          title: 'Attempt sending location while moving',
+          description: 'Should the plugin attempt to send tracking data to NFL while detecting the vessel is moving or only when stopped?',
+          default: true
+        },
+        filterSource: {
+          type: 'string',
+          title: 'Position source device',
+          description: 'Set this value to the name of a source if you want to only use the position given by that source.'
+        },
+        trackDir: {
+          type: 'string',
+          title: 'Directory to cache tracks.',
+          description: 'Path in server filesystem, absolute or from plugin directory.\noptional param (only used to keep file cache).'
+        },
+        keepFiles: {
+          type: 'boolean',
+          title: 'Should keep track files on disk?',
+          description: 'If you have a lot of hard drive space you can keep the track files for logging purposes.',
+          default: false
+        },
+        ping_api_every_24h: {
+          type: 'boolean',
+          title: 'Should I force a send every 24 hours',
+          description: 'Keeps your boat active on NFL in your current location even if you do not move',
+          default: true
+        }
+      }
+    };
+  }
+
+  getPluginObject() {
+    return {
+      id: this.pluginId,
+      name: this.pluginName,
+      description: 'SignalK track logger to noforeignland.com',
+      schema: this.getSchema(),
+      start: this.start.bind(this),
+      stop: this.stop.bind(this)
+    };
+  }
+
+  async start(options = {}, restartPlugin) {
+    // normalize options
+    this.options = Object.assign({}, options);
+    if (!this.options.trackDir) this.options.trackDir = defaultTracksDir;
+    if (!path.isAbsolute(this.options.trackDir)) {
+      this.options.trackDir = path.join(__dirname, this.options.trackDir);
+    }
+
+    if (!this.createDir(this.options.trackDir)) {
+      this.stop();
+      return;
+    }
+
+    this.app.debug('track logger started, now logging to', this.options.trackDir);
+    this.app.setPluginStatus(`Started`);
+    this.upSince = new Date().getTime();
+
+    // adjust default CRON if unchanged
+    if (!this.options.apiCron || this.options.apiCron === '*/10 * * * *') {
+      const startMinute = Math.floor(Math.random() * 10);
+      const startSecond = Math.floor(Math.random() * 60);
+      this.options.apiCron = `${startSecond} ${startMinute}/10 * * * *`;
+    }
+
+    this.app.debug('Setting CRON to ', this.options.apiCron);
+
+    // subscribe and logging
+    this.doLogging();
+
+    // start cron job
+    this.cron = new CronJob(this.options.apiCron, this.interval.bind(this));
+    this.cron.start();
+  }
+
+  stop() {
+    this.app.debug('plugin stopped');
+    if (this.cron) {
+      this.cron.stop();
+      this.cron = undefined;
+    }
+    this.unsubscribesControl.forEach(f => f());
+    this.unsubscribesControl = [];
+    this.unsubscribes.forEach(f => f());
+    this.unsubscribes = [];
+    this.app.setPluginStatus('Plugin stopped');
+  }
+
+  doLogging() {
+    // subscribe for position
+    let shouldDoLog = true;
+
+    this.app.subscriptionmanager.subscribe({
+      context: 'vessels.self',
+      subscribe: [{
+        path: 'navigation.position',
+        format: 'delta',
+        policy: 'instant',
+        minPeriod: this.options.trackFrequency ? this.options.trackFrequency * 1000 : 0
+      }]
+    }, this.unsubscribes, (subscriptionError) => {
+      this.app.debug('Error subscription to data:' + subscriptionError);
+      this.app.setPluginError('Error subscription to data:' + subscriptionError.message);
+    }, this.doOnValue.bind(this, () => shouldDoLog, newShould => { shouldDoLog = newShould; }));
+
+    // subscribe for speed
+    if (this.options.minSpeed) {
+      this.app.subscriptionmanager.subscribe({
+        context: 'vessels.self',
+        subscribe: [{
+          path: 'navigation.speedOverGround',
+          format: 'delta',
+          policy: 'instant'
+        }]
+      }, this.unsubscribes, (subscriptionError) => {
+        this.app.debug('Error subscription to data:' + subscriptionError);
+        this.app.setPluginError('Error subscription to data:' + subscriptionError.message);
+      }, (delta) => {
+        delta.updates.forEach(update => {
+          if (this.options.filterSource && update.$source !== this.options.filterSource) {
+            return;
+          }
+          update.values.forEach(value => {
+            const speedInKnots = value.value * 1.94384; 
+            if (!shouldDoLog && this.options.minSpeed < speedInKnots) { 
+              this.app.debug('setting shouldDoLog to true, speed:', speedInKnots.toFixed(2), 'knots'); 
+              shouldDoLog = true; 
+            }
+          });
+        });
+      });
+    }
+  }
+
+  async doOnValue(getShouldDoLog, setShouldDoLog, delta) {
+  for (const update of delta.updates) {
+    if (this.options.filterSource && update.$source !== this.options.filterSource) {
+      return;
+    }
+    const timestamp = update.timestamp;
+    for (const value of update.values) {
+      // Validierung: GPS nahe (0,0)
+      if (Math.abs(value.value.latitude) <= 0.01 && Math.abs(value.value.longitude) <= 0.01) {
+        this.app.debug('GPS coordinates near (0,0), ignoring point to avoid invalid data logging.');
+        return;
+      }
+      
+      // Validate for valid lat/lon
+      if (!this.isValidLatitude(value.value.latitude) || !this.isValidLongitude(value.value.longitude)) {
+        this.app.debug('got invalid position, ignoring...', value.value);
+        return;
+      }
+
+      // 24h-Ping Check: Setze Flag, aber breche NICHT ab
+      let force24hSave = false;
+      if (this.options.ping_api_every_24h && this.lastPosition) {
+        const timeSinceLastPoint = (new Date().getTime() - this.lastPosition.currentTime);
+        if (timeSinceLastPoint >= 24 * 60 * 60 * 1000) {
+          this.app.debug('24h since last point, forcing save of point to keep boat active on NFL');
+          force24hSave = true;
+        }
+      }
+
+      // Wenn wir nicht loggen sollen UND es kein 24h-Force ist, dann raus
+      if (!force24hSave && !getShouldDoLog()) {
+        return;
+      }
+
+      // Wenn wir eine letzte Position haben, prüfe Timestamp und Distanz
+      if (this.lastPosition && !force24hSave) {
+        // Timestamp-Validierung
+        if (new Date(this.lastPosition.timestamp).getTime() > new Date(timestamp).getTime()) {
+          this.app.debug('got error in timestamp:', timestamp, 'is earlier than previous:', this.lastPosition.timestamp);
+          return;
+        }
+        
+        // Distance-Check (nur wenn NICHT 24h-Force)
+        const distance = this.equirectangularDistance(this.lastPosition.pos, value.value);
+        if (this.options.minMove && distance < this.options.minMove) {
+          this.app.debug('Distance', distance.toFixed(2), 'm is less than minMove', this.options.minMove, 'm - skipping');
+          return;
+        }
+      }
+
+      // Punkt speichern
+      this.lastPosition = { pos: value.value, timestamp, currentTime: new Date().getTime() };
+      await this.savePoint(this.lastPosition);
+
+      // shouldDoLog zurücksetzen wenn minSpeed aktiv ist
+      if (this.options.minSpeed) {
+        this.app.debug('options.minSpeed - setting shouldDoLog to false');
+        setShouldDoLog(false);
+      }
+    }
+  }}
 
 
-module.exports = function(app) {
-	var plugin = {};
-	plugin.id = 'signalk-to-noforeignland';
-	plugin.name = 'SignalK to Noforeignland';
-	plugin.description = 'SignalK track logger to noforeignland.com';
+ async savePoint(point) {
+  const obj = {
+    lat: point.pos.latitude,
+    lon: point.pos.longitude,
+    t: point.timestamp
+  };
+  this.app.debug(`save data point:`, obj);
+  await fs.appendFile(path.join(this.options.trackDir, routeSaveName), JSON.stringify(obj) + EOL);
+  
+  // Inform user about last saved point
+  const lastSaveTime = new Date().toLocaleString();
+  const lastTransferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toLocaleString() : 'Never';
+  this.app.setPluginStatus(`Last save: ${lastSaveTime} | Last transfer: ${lastTransferTime}`);
+ }
 
-	plugin.schema = {
-		"title": plugin.name,
-		"description": "Some parameters need for use",
-		"type": "object",
-		"required": ["emailCron", "boatApiKey"],
-		"properties": {
-			"trackFrequency": {
-				"type": "integer",
-				"title": "Position tracking frequency in seconds.",
-				"description": "To keep file sizes small we only log positions once in a while (unless you set this value to 0)",
-				"default": 60
-			},
-			"minMove": {
-				"type": "number",
-				"title": "Minimum boat move to log in meters",
-				"description": "To keep file sizes small we only log positions if a move larger than this size is noted (if set to 0 will log every move)",
-				"default": 50
-			},
-			"minSpeed": {
-				"type": "number",
-				"title": "Minimum boat speed to log in knots",
-				"description": "To keep file sizes small we only log positions if boat speed goes above this value to minimize recording position on anchor or mooring (if set to 0 will log every move)",
-				"default": 1.5
-			},
-			"emailCron": {
-				"type": "string",
-				"title": "Send attempt CRON",
-				"description": "We send the tracking data to NFL once in a while, you can set the schedule with this setting. CRON format: https://crontab.guru/",
-				"default": '*/10 * * * *',
-			},
-			'boatApiKey': {
-				"type": "string",
-				"title": "Boat API key",
-				"description": "Boat API key from noforeignland.com. Can be found in Account > Settings > Boat tracking > API Key. *required only in API method is set*",
-			},
-			"internetTestTimeout": {
-				"type": "number",
-				"title": "Timeout for testing internet connection in ms",
-				"description": "Set this number higher for slower computers and internet connections",
-				"default": 2000,
-			},
-			"sendWhileMoving": {
-				"type": "boolean",
-				"title": "Attempt sending location while moving",
-				"description": "Should the plugin attempt to send tracking data to NFL while detecting the vessel is moving or only when stopped?",
-				"default": false
-			},
-			"filterSource": {
-				"type": "string",
-				"title": "Position source device",
-				"description": "Set this value to the name of a source if you want to only use the position given by that source.",
-			},
-			"trackDir": {
-				"type": "string",
-				"title": "Directory to cache tracks.",
-				"description": "Path in server filesystem, absolute or from plugin directory. optional param (only used to keep file cache).",
-			},
-			"keepFiles": {
-				"type": "boolean",
-				"title": "Should keep track files on disk?",
-				"description": "If you have a lot of hard drive space you can keep the track files for logging purposes.",
-				"default": false
-			},
-			"ping": {
-				"type": "boolean",
-				"title": "Should I force a send every 24 hours",
-				"description": "Keeps your boat active on NFL in your current location even if you do not move",
-				"default": true
-			},
-			"apiUrl": {
-			  "type": "string",
-			  "title": "NFL tracking API endpoint",
-			  "description": "Change only if NFL gives you a different endpoint.",
-			  "default": "https://www.noforeignland.com/home/api/v1/boat/tracking/track"
-			}
+  isValidLatitude(obj) {
+    return this.isDefinedNumber(obj) && obj > -90 && obj < 90;
+  }
+  isValidLongitude(obj) {
+    return this.isDefinedNumber(obj) && obj > -180 && obj < 180;
+  }
+  isDefinedNumber(obj) {
+    return (obj !== undefined && obj !== null && typeof obj === 'number');
+  }
 
-		}
-	};
+  equirectangularDistance(from, to) {
+    const rad = Math.PI / 180;
+    const φ1 = from.latitude * rad;
+    const φ2 = to.latitude * rad;
+    const Δλ = (to.longitude - from.longitude) * rad;
+    const R = 6371e3;
+    const x = Δλ * Math.cos((φ1 + φ2) / 2);
+    const y = (φ2 - φ1);
+    const d = Math.sqrt(x * x + y * y) * R;
+    return d;
+  }
 
-	var unsubscribes = [];
-	var unsubscribesControl = [];
-	var routeSaveName = 'nfl-track.jsonl';
-	let lastPosition;
-	let upSince;
-	let cron;
-	const creator = 'signalk-track-logger';
-	const defaultTracksDir = 'track';
+  createDir(dir) {
+    let res = true;
+    if (fs.existsSync(dir)) {
+      try {
+        fs.accessSync(dir, fs.constants.R_OK | fs.constants.W_OK);
+      } catch (error) {
+        this.app.debug('[createDir]', error.message);
+        this.app.setPluginError(`No rights to directory ${dir}`);
+        res = false;
+      }
+    } else {
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+      } catch (error) {
+        switch (error.code) {
+          case 'EACCES':
+          case 'EPERM':
+            this.app.debug(`False to create ${dir} by Permission denied`);
+            this.app.setPluginError(`False to create ${dir} by Permission denied`);
+            res = false;
+            break;
+          case 'ETIMEDOUT':
+            this.app.debug(`False to create ${dir} by Operation timed out`);
+            this.app.setPluginError(`False to create ${dir} by Operation timed out`);
+            res = false;
+            break;
+          default:
+            this.app.debug(`Error creating directory ${dir}: ${error.message}`);
+            this.app.setPluginError(`Error creating directory ${dir}: ${error.message}`);
+            res = false;
+        }
+      }
+    }
+    return res;
+  }
 
-	let initialSent = false;
-	let lastSentTime = 0;
+  // periodic interval called by cron
+  async interval() {
+    if ((this.checkBoatMoving()) && await this.checkTrack() && await this.testInternet()) {
+      await this.sendData();
+    }
+  }
 
-	// const maxAllowedSpeed = 100;
+  checkBoatMoving() { 
+    if (!this.options.trackFrequency) { 
+      return true; // Kein Tracking → immer senden 
+    } 
+    const time = this.lastPosition ? this.lastPosition.currentTime : this.upSince; 
+    const secsSinceLastPoint = (new Date().getTime() - time) / 1000; 
+    const isMoving = secsSinceLastPoint <= (this.options.trackFrequency * 2); 
+    if (isMoving) { 
+      this.app.debug('Boat is still moving, last move', secsSinceLastPoint, 'seconds ago'); 
+      return this.options.sendWhileMoving; // Nur senden wenn gewünscht 
+    } else { 
+      this.app.debug('Boat stopped moving, last move at least', secsSinceLastPoint, 'seconds ago'); 
+      return true; // Immer senden wenn gestoppt 
+      } 
+  }
 
-	plugin.start = function(options, restartPlugin) {
-		if (!options.trackDir) options.trackDir = defaultTracksDir;
-		if (!path.isAbsolute(options.trackDir)) options.trackDir = path.join(__dirname, options.trackDir);
-		//app.debug('options.trackDir=',options.trackDir);
-		if (!createDir(options.trackDir)) {
-			plugin.stop();
-			return;
-		}
+ async testInternet() {
+  const dns = require('dns').promises;
+  
+  this.app.debug('testing internet connection');
+  
+  try {
+    // Force IPv4 DNS lookup with timeout
+    const timeoutMs = this.options.internetTestTimeout || internetTestTimeout;
+    const addresses = await Promise.race([
+      dns.resolve4(internetTestAddress),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('DNS timeout')), timeoutMs)
+      )
+    ]);
+    
+    if (addresses && addresses.length > 0) {
+      this.app.debug('internet connection = true, resolved IPv4:', addresses[0]);
+      return true;
+    } else {
+      this.app.debug('internet connection = false, no IPv4 addresses found');
+      return false;
+    }
+  } catch (err) {
+    this.app.debug('internet connection = false, error:', err.message);
+    return false;
+  }
+ }
 
-		app.debug('track logger started, now logging to', options.trackDir);
-		app.setPluginStatus(`Started`);
+  async checkTrack() {
+    const trackFile = path.join(this.options.trackDir, routeSaveName);
+    this.app.debug('checking the track', trackFile, 'if should send');
+    const exists = await fs.pathExists(trackFile);
+    const size = exists ? (await fs.lstat(trackFile)).size : 0;
+    this.app.debug(`'${trackFile}'.size=${size} ${trackFile}'.exists=${exists}`);
+    return size > 0;
+  }
 
-		doLogging();
+  async sendData() {
+    if (this.options.boatApiKey) {
+      await this.sendApiData();
+    } else {
+      this.app.debug('Failed to send track - no boat API key set in plugin settings.');
+      this.app.setPluginError(`Failed to send track - no boat API key set in plugin settings.`);
+    }
+  }
 
-		function doLogging() {
-			let shouldDoLog = true
-			//subscribe for position
-			app.subscriptionmanager.subscribe({
-				"context": "vessels.self",
-				"subscribe": [
-					{
-						"path": "navigation.position",
-						"format": "delta",
-						"policy": "instant",
-						"minPeriod": options.trackFrequency ? options.trackFrequency * 1000 : 0,
-					}
-				]
-			},
-				unsubscribes,
-				subscriptionError => {
-					app.debug('Error subscription to data:' + subscriptionError);
-					app.setPluginError('Error subscription to data:' + subscriptionError.message);
-				},
-				doOnValue
-			);
+  async sendApiData() {
+    this.app.debug('sending the data');
+    const trackData = await this.createTrack(path.join(this.options.trackDir, routeSaveName));
+    if (!trackData) {
+      this.app.debug('Recorded track did not contain any valid track points, aborting sending.');
+      this.app.setPluginError(`Failed to send track - Recorded track did not contain any valid track points, aborting sending.`);
+      return;
+    }
+    this.app.debug('created track data with timestamp:', new Date(trackData.timestamp));
+    const params = new URLSearchParams();
+    params.append('timestamp', trackData.timestamp);
+    params.append('track', JSON.stringify(trackData.track));
+    params.append('boatApiKey', this.options.boatApiKey);
+    const headers = { 'X-NFL-API-Key': pluginApiKey };
+    this.app.debug('sending track to API');
 
-			//subscribe for speed
-			if (options.minSpeed) {
-				app.subscriptionmanager.subscribe({
-					"context": "vessels.self",
-					"subscribe": [
-						{
-							"path": "navigation.speedOverGround",
-							"format": "delta",
-							"policy": "instant",
-						}
-					]
-				},
-					unsubscribes,
-					subscriptionError => {
-						app.debug('Error subscription to data:' + subscriptionError);
-						app.setPluginError('Error subscription to data:' + subscriptionError.message);
-					},
-					delta => {
-						// app.debug('got speed delta', delta);
-						delta.updates.forEach(update => {
-							// app.debug(`update:`, update);
-							if (options.filterSource && update.$source !== options.filterSource) {
-								return;
-							}
-							update.values.forEach(value => {
-								// value.value is sog in m/s so 'sog*2' is in knots
-								if (!shouldDoLog && options.minSpeed < value.value * 2) {
-									app.debug('setting shouldDoLog to true');
-									shouldDoLog = true;
-								}
-							})
-						})
-					}
-				);
-			}
+    try {
+      const response = await fetch(apiUrl, { method: 'POST', body: params, headers: new fetch.Headers(headers) });
+      if (response.ok) {
+        const responseBody = await response.json();
+        if (responseBody.status === 'ok') {
+          this.lastSuccessfulTransfer = new Date();
+          this.app.debug('Track successfully sent to API');
+          this.app.setPluginStatus(`Started - last Track sent successfully at ${new Date().toLocaleString()}`);
+          if (this.options.keepFiles) {
+            const filename = new Date().toJSON().slice(0, 19).replace(/:/g, '') + '-nfl-track.jsonl';
+            this.app.debug('moving and keeping track file: ', filename);
+            await fs.move(path.join(this.options.trackDir, routeSaveName), path.join(this.options.trackDir, filename));
+          } else {
+            this.app.debug('Deleting track file');
+            await fs.remove(path.join(this.options.trackDir, routeSaveName));
+          }
+        } else {
+          this.app.debug('Could not send track to API, returned response json:', responseBody);
+          this.app.setPluginError(`Failed to send track - check logs for details.`);
+        }
+      } else {
+        this.app.debug('Could not send track to API, returned response code:', response.status, response.statusText);
+        this.app.setPluginError(`Failed to send track - check logs for details.`);
+      }
+    } catch (err) {
+      this.app.debug('Could not send track to API due to error:', err);
+      this.app.setPluginError(`Failed to send track - check logs for details.`);
+    }
+  }
 
-			async function doOnValue(delta) {
+  async createTrack(inputPath) {
+    const fileStream = fs.createReadStream(inputPath);
+    const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
+    const track = [];
+    let lastTimestamp;
+    for await (const line of rl) {
+      if (line) {
+        try {
+          const point = JSON.parse(line);
+          const timestamp = new Date(point.t).getTime();
+          if (!isNaN(timestamp) && this.isValidLatitude(point.lat) && this.isValidLongitude(point.lon)) {
+            track.push([timestamp, point.lat, point.lon]);
+            lastTimestamp = timestamp;
+          }
+        } catch (error) {
+          this.app.debug('could not parse line from track file:', line);
+          this.app.setPluginError(`Failed could not parse line from track file - check logs for details.`);
+        }
+      }
+    }
+    if (track.length > 0) {
+      return { timestamp: new Date(lastTimestamp).getTime(), track };
+    }
+    return null;
+  }
+}
 
-				for (update of delta.updates) {
-					// app.debug(`update:`, update);
-					if (options.filterSource && update.$source !== options.filterSource) {
-						return;
-					}
-					let timestamp = update.timestamp;
-					for (value of update.values) {
-
-
-						if (
-							Math.abs(value.value.latitude) <= 0.01 &&
-							Math.abs(value.value.longitude) <= 0.01
-						) {
-							// Coordinates are within ±0.1 of (0,0)
-							return;
-						}
-
-						// app.debug(`value:`, value);
-
-						if (!shouldDoLog) {
-							return;
-						}
-						if (!isValidLatitude(value.value.latitude) || !isValidLongitude(value.value.longitude)) {
-							return;
-						}
-
-
-						if (lastPosition) {
-							if (new Date(lastPosition.timestamp).getTime() > new Date(timestamp).getTime()) {
-								app.debug('got error in timestamp:', timestamp, 'is earlier than previous:', lastPosition.timestamp);
-								// SK sometimes messes up timestamps, when that happens we throw the update
-								return;
-							}
-							lastPosition = { pos: value.value, timestamp, currentTime: new Date().getTime() };
-							app.debug('Updated lastPosition:', lastPosition);
-
-							const distance = equirectangularDistance(lastPosition.pos, value.value)
-							if (options.minMove && distance < options.minMove) {
-								return;
-							}
-							// if (calculatedSpeed(distance, (timestamp - lastPosition.timestamp) / 1000) > maxAllowedSpeed) {
-							//   app.debug('got error position', value.value, 'ignoring...');
-							//   return;
-							// }
-						} else{
-							lastPosition = { pos: value.value, timestamp, currentTime: new Date().getTime() };
-						}
-
-						await savePoint(lastPosition);
-						if (options.minSpeed) {
-							app.debug('setting shouldDoLog to false');
-							shouldDoLog = false;
-						}
-						if (!initialSent) {
-							initialSent = true;
-							app.debug('sending initial fix');
-							if (await testInternet()) {
-								await sendLatestPoint();
-								lastSentTime = Date.now();
-							}
-						}
-
-
-
-
-					};
-				};
-			}
-		}
-
-		async function savePoint(point) {
-			//{pos: {latitude, longitude}, timestamp}
-			// Date.parse(timestamp)
-			const obj = {
-				lat: point.pos.latitude,
-				lon: point.pos.longitude,
-				t: point.timestamp,
-			}
-			app.debug(`save data point:`, obj);
-			await fs.appendFile(path.join(options.trackDir, routeSaveName), JSON.stringify(obj) + EOL);
-		}
-
-		function isValidLatitude(obj) {
-			return isDefinedNumber(obj) && obj > -90 && obj < 90
-		}
-
-		function isValidLongitude(obj) {
-			return isDefinedNumber(obj) && obj > -180 && obj < 180
-		}
-
-		function isDefinedNumber(obj) {
-			return (obj !== undefined && obj !== null && typeof obj === 'number');
-		}
-
-		// function calculatedSpeed(distance, timeSecs) {
-		//   // m/s to knots ~= speedinms * 1.944
-		//   return (distance / timeSecs) * msToKn
-		// }
-
-		function equirectangularDistance(from, to) {
-			// https://www.movable-type.co.uk/scripts/latlong.html
-			// from,to: {longitude: xx, latitude: xx}
-			const rad = Math.PI / 180;
-			const φ1 = from.latitude * rad;
-			const φ2 = to.latitude * rad;
-			const Δλ = (to.longitude - from.longitude) * rad;
-			const R = 6371e3;
-			const x = Δλ * Math.cos((φ1 + φ2) / 2);
-			const y = (φ2 - φ1);
-			const d = Math.sqrt(x * x + y * y) * R;
-			return d;
-		}
-
-		function createDir(dir) {
-			let res = true;
-			if (fs.existsSync(dir)) {
-				try {
-					fs.accessSync(dir, fs.constants.R_OK | fs.constants.W_OK);
-				}
-				catch (error) {
-					app.debug('[createDir]', error.message);
-					app.setPluginError(`No rights to directory ${dir}`);
-					res = false;
-				}
-			}
-			else {
-				try {
-					fs.mkdirSync(dir, { recursive: true });
-				}
-				catch (error) {
-					switch (error.code) {
-						case 'EACCES':	// Permission denied
-						case 'EPERM':	// Operation not permitted
-							app.debug(`False to create ${dir} by Permission denied`);
-							app.setPluginError(`False to create ${dir} by Permission denied`);
-							res = false;
-							break;
-						case 'ETIMEDOUT':	// Operation timed out
-							app.debug(`False to create ${dir} by Operation timed out`);
-							app.setPluginError(`False to create ${dir} by Operation timed out`);
-							res = false;
-							break;
-					}
-				}
-			}
-			return res;
-		} // end function createDir
-
-		async function interval() {
-			const now = Date.now();
-			const twentyFourHrs = 24 * 3600 * 1000;
-			//const twentyFourHrs =  60 * 1000;
-			if (options.ping && (!lastSentTime || now - lastSentTime >= twentyFourHrs)) {
-				app.debug('24 hrs elapsed since last send, pushing periodic fix');
-				if (await testInternet()) {
-					await sendLatestPoint();
-				}
-				return;
-			}
-
-			if (checkBoatMoving() && await checkTrack() && await testInternet()) {
-				await sendData();
-				lastSentTime = now;
-			}
-		}
-
-
-
-
-
-		function checkBoatMoving() {
-			if (options.sendWhileMoving || !options.trackFrequency) {
-				return true;
-			}
-			const time = lastPosition ? lastPosition.currentTime : upSince;
-
-			const secsSinceLastPoint = (new Date().getTime() - time) / 1000
-			if (secsSinceLastPoint > (options.trackFrequency * 2)) {
-				app.debug('Boat stopped moving, last move at least', secsSinceLastPoint, 'seconds ago');
-				return true;
-			} else {
-				app.debug('Boat is still moving, last move', secsSinceLastPoint, 'seconds ago');
-				return false;
-			}
-		}
-
-		async function testInternet() {
-			app.debug('testing internet connection');
-			const check = await isReachable(internetTestAddress, { timeout: options.internetTestTimeout || internetTestTimeout });
-			app.debug('internet connection = ', check);
-			return check;
-		}
-
-		async function checkTrack() {
-			const trackFile = path.join(options.trackDir, routeSaveName);
-			app.debug('checking the track', trackFile, 'if should send');
-			const exists = await fs.pathExists(trackFile);
-			const size = exists ? (await fs.lstat(trackFile)).size : 0;
-			app.debug(`'${trackFile}'.size=${size} ${trackFile}'.exists=${exists}`);
-			return size > 0;
-		}
-		
-		async function sendLatestPoint() {
-		    if (!lastPosition) {
-		        app.debug('No lastPosition cached, skipping 24hr ping');
-		        return;
-		    }
-		    const url = options.apiUrl || "https://www.noforeignland.com/home/api/v1/boat/tracking/track";
-		    const timestamp = Date.now();//we want to trigger a refresh on NFL even if we didn't get a delta
-		    const lat = lastPosition.pos.latitude;
-		    const lon = lastPosition.pos.longitude;
-			
-			if (Math.abs(lat) <= 0.01 &&
-				Math.abs(lon) <= 0.01
-			) {
-				return;
-			}
-		    if (!isValidLatitude(lat) || !isValidLongitude(lon)) {
-		        app.debug('Invalid lastPosition for 24hr ping, skipping');
-		        return;
-		    }
-		    const singlePointTrack = [[timestamp, lat, lon]];
-		    const params = new URLSearchParams();
-		    params.append('timestamp', timestamp);
-		    params.append('track', JSON.stringify(singlePointTrack));
-		    params.append('boatApiKey', options.boatApiKey);
-
-		    const headers = {
-		        'X-NFL-API-Key': pluginApiKey
-		    };
-			   app.debug('Sending latest position to API as single-point track', singlePointTrack);
-		    try {
-		        const response = await fetch(url, { method: 'POST', body: params, headers: new fetch.Headers(headers) });
-		        if (response.ok) {
-		            const responseBody = await response.json();
-		            if (responseBody.status === 'ok') {
-		                app.debug('Latest position successfully sent to API');
-		            } else {
-		                app.debug('API responded with error:', responseBody);
-		            }
-		        } else {
-		            app.debug('API responded with HTTP error:', response.status, response.statusText);
-		        }
-		    } catch (err) {
-		        app.debug('Failed to send latest position to API:', err);
-		    }
-		}
-
-		
-
-		async function sendData() {
-			if (options.boatApiKey) {
-				sendApiData();
-			} else {
-				sendEmailData();
-			}
-		}
-
-		async function sendApiData() {
-			const url = options.apiUrl || "https://www.noforeignland.com/home/api/v1/boat/tracking/track";
-		    app.debug('sending to ' + url)
-			app.debug('sending the data');
-			const trackData = await createTrack(path.join(options.trackDir, routeSaveName));
-			if (!trackData) {
-				app.debug('Recorded track did not contain any valid track points, aborting sending.');
-				return;
-			}
-			app.debug('created track data with timestamp:', new Date(trackData.timestamp));
-
-			const params = new URLSearchParams();
-			params.append('timestamp', trackData.timestamp);
-			params.append('track', JSON.stringify(trackData.track));
-			params.append('boatApiKey', options.boatApiKey);
-
-			const headers = {
-				'X-NFL-API-Key': pluginApiKey
-			}
-
-			app.debug('sending track to API');
-			try {
-				const response = await fetch(url, { method: 'POST', body: params, headers: new fetch.Headers(headers) });
-				if (response.ok) {
-					const responseBody = await response.json();
-					if (responseBody.status === 'ok') {
-						app.debug('Track successfully sent to API');
-						if (options.keepFiles) {
-							const filename = new Date().toJSON().slice(0, 19).replace(/:/g, '') + '-nfl-track.jsonl';
-							app.debug('moving and keeping track file: ', filename);
-							await fs.move(path.join(options.trackDir, routeSaveName), path.join(options.trackDir, filename));
-						} else {
-							app.debug('Deleting track file');
-							await fs.remove(path.join(options.trackDir, routeSaveName));
-						}
-					} else {
-						app.debug('Could not send track to API, returned response json:', responseBody);
-					}
-				} else {
-					app.debug('Could not send track to API, returned response code:', response.status, response.statusText);
-				}
-			} catch (err) {
-				app.debug('Could not send track to API due to error:', err);
-			}
-		}
-
-		async function createTrack(inputPath) {
-			const fileStream = fs.createReadStream(inputPath);
-
-			const rl = readline.createInterface({
-				input: fileStream,
-				crlfDelay: Infinity
-			});
-			const track = []
-			let lastTimestamp;
-			for await (const line of rl) {
-				if (line) {
-					try {
-						const point = JSON.parse(line);
-
-						const timestamp = new Date(point.t).getTime();
-						if (!isNaN(timestamp) && isValidLatitude(point.lat) && isValidLongitude(point.lon)) {
-							track.push([timestamp, point.lat, point.lon]);
-							lastTimestamp = timestamp;
-						}
-
-					} catch (error) {
-						app.debug('could not parse line from track file:', line);
-					}
-				}
-			}
-			if (track.length > 0) {
-				return { timestamp: new Date(lastTimestamp).getTime(), track };
-			}
-		}
-
-		async function sendEmailData() {
-			app.debug('sending the data');
-			const gpxFiles = await createGPX({ input: path.join(options.trackDir, routeSaveName), outputDir: options.trackDir, creator });
-			app.debug('created GPX files', gpxFiles);
-			try {
-				for (let file of gpxFiles) {
-					app.debug('sending', file);
-					try {
-						!await sendEmail({
-							emailService: options.emailService,
-							user: options.emailUser,
-							password: options.emailPassword,
-							from: options.emailFrom,
-							to: options.emailTo,
-							trackFile: file
-						})
-					} catch (err) {
-						app.debug('Sending email failed:', err);
-						return;
-					}
-				}
-			} finally {
-				for (let file of gpxFiles) {
-					app.debug('deleting', file);
-					await fs.rm(file);
-				}
-			}
-			await fs.rm(path.join(options.trackDir, routeSaveName));
-		}
-		//every 10 minute but staggered to the second so we don't all send at once.
-		if (!options.emailCron || options.emailCron === '*/10 * * * *') {
-			const startMinute = Math.floor(Math.random() * 10);  // Random minute within the 10-minute range
-			const startSecond = Math.floor(Math.random() * 60);  // Random second within the minute
-			options.emailCron = `${startSecond} ${startMinute}/10 * * * *`;  // Every 10 minutes, starting at a random minute and second within each 10-minute block
-		}
-
-		upSince = new Date().getTime();
-
-		app.debug('Setting CRON to ', options.emailCron);
-		cron = new CronJob(
-			options.emailCron,
-			interval
-		);
-		cron.start();
-	}; 	// end plugin.start
-
-	plugin.stop = function() {
-		app.debug('plugin stopped');
-		if (cron) {
-			cron.stop();
-			cron = undefined;
-		}
-		unsubscribesControl.forEach(f => f());
-		unsubscribesControl = [];
-		unsubscribes.forEach(f => f());
-		unsubscribes = [];
-		app.setPluginStatus('Plugin stopped');
-	}; // end plugin.stop
-
-
-	return plugin;
+module.exports = function (app) {
+  const instance = new SignalkToNoforeignland(app);
+  return instance.getPluginObject();
 };

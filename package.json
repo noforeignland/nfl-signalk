@@ -1,13 +1,13 @@
 {
   "name": "signalk-to-noforeignland",
-  "version": "0.1.21",
+  "version": "0.1.24",
   "description": "SignalK track logger to noforeignland.com ",
   "main": "index.js",
   "keywords": [
     "signalk-node-server-plugin",
     "signalk-category-utility"
   ],
-  "author": "Ian Miller",
+  "author": "Dirk Wahrheit",
   "homepage": "https://github.com/noforeignland/nfl-signalk",
   "bugs": {
     "url": "https://github.com/noforeignland/nfl-signalk/issues"
@@ -23,7 +23,6 @@
     "cron": "^2.1.0",
     "fs-extra": "^10.1.0",
     "is-reachable": "^5.2.1",
-    "node-fetch": "^2.6.7",
-    "nodemailer": "^6.8.0"
+    "node-fetch": "^2.6.7"
   }
 }
