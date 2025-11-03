@@ -1,3 +1,6 @@
+0.1.25-beta.2
+* CHANGE: Typo in pluginName fixed
+
 0.1.25-beta.1
 * CHANGE: User mattzilla470 reported timout Issues on VE Cerbo with a small CPU (https://github.com/noforeignland/nfl-signalk/issues/7). So added a timout option in the plugin config and a tripple retry while increasing the timeout for the API call.
 

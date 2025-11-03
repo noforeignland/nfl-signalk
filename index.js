@@ -17,7 +17,7 @@ class SignalkToNoforeignland {
   constructor(app) {
     this.app = app;
     this.pluginId = 'signalk-to-noforeignland';
-    this.pluginName = 'SignalK to Noforeland';
+    this.pluginName = 'Signal K to Noforeignland';
     this.creator = 'signalk-track-logger';
 
     // runtime state
