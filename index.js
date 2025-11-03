@@ -99,6 +99,14 @@ class SignalkToNoforeignland {
           title: 'Should I force a send every 24 hours',
           description: 'Keeps your boat active on NFL in your current location even if you do not move',
           default: true
+        },
+        apiTimeout: {
+          type: 'integer',
+          title: 'API request timeout in seconds',
+          description: 'Timeout for sending data to NFL API. Increase for slow connections.',
+          default: 30,
+          minimum: 10,
+          maximum: 180
         }
       }
     };
@@ -429,36 +437,75 @@ class SignalkToNoforeignland {
     const headers = { 'X-NFL-API-Key': pluginApiKey };
     this.app.debug('sending track to API');
 
-    try {
-      const response = await fetch(apiUrl, { method: 'POST', body: params, headers: new fetch.Headers(headers) });
-      if (response.ok) {
-        const responseBody = await response.json();
-        if (responseBody.status === 'ok') {
-          this.lastSuccessfulTransfer = new Date();
-          this.app.debug('Track successfully sent to API');
-          this.app.setPluginStatus(`Started - last Track sent successfully at ${new Date().toLocaleString()}`);
-          if (this.options.keepFiles) {
-            const filename = new Date().toJSON().slice(0, 19).replace(/:/g, '') + '-nfl-track.jsonl';
-            this.app.debug('moving and keeping track file: ', filename);
-            await fs.move(path.join(this.options.trackDir, routeSaveName), path.join(this.options.trackDir, filename));
+    // Retry-Logik mit exponentiell steigendem Timeout
+    const maxRetries = 3;
+    const baseTimeout = (this.options.apiTimeout || 30) * 1000; // Konfigurierbarer Basis-Timeout in ms
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const currentTimeout = baseTimeout * attempt; // 30s, 60s, 90s
+        this.app.debug(`Attempt ${attempt}/${maxRetries} with ${currentTimeout}ms timeout`);
+        
+        // AbortController für Timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), currentTimeout);
+        
+        const response = await fetch(apiUrl, { 
+          method: 'POST', 
+          body: params, 
+          headers: new fetch.Headers(headers),
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const responseBody = await response.json();
+          if (responseBody.status === 'ok') {
+            this.lastSuccessfulTransfer = new Date();
+            this.app.debug('Track successfully sent to API');
+            this.app.setPluginStatus(`Started - last Track sent successfully at ${new Date().toLocaleString()}`);
+            if (this.options.keepFiles) {
+              const filename = new Date().toJSON().slice(0, 19).replace(/:/g, '') + '-nfl-track.jsonl';
+              this.app.debug('moving and keeping track file: ', filename);
+              await fs.move(path.join(this.options.trackDir, routeSaveName), path.join(this.options.trackDir, filename));
+            } else {
+              this.app.debug('Deleting track file');
+              await fs.remove(path.join(this.options.trackDir, routeSaveName));
+            }
+            return; // Erfolg - beende Funktion
           } else {
-            this.app.debug('Deleting track file');
-            await fs.remove(path.join(this.options.trackDir, routeSaveName));
+            this.app.debug('Could not send track to API, returned response json:', responseBody);
+            // Bei API-Fehler nicht erneut versuchen
+            this.app.setPluginError(`Failed to send track - API returned error.`);
+            return;
           }
         } else {
-          this.app.debug('Could not send track to API, returned response json:', responseBody);
-          this.app.setPluginError(`Failed to send track - check logs for details.`);
+          this.app.debug('Could not send track to API, returned response code:', response.status, response.statusText);
+          // Bei 4xx Fehler nicht erneut versuchen
+          if (response.status >= 400 && response.status < 500) {
+            this.app.setPluginError(`Failed to send track - HTTP ${response.status}.`);
+            return;
+          }
+          // Bei 5xx Fehler retry
+          throw new Error(`HTTP ${response.status}`);
         }
-      } else {
-        this.app.debug('Could not send track to API, returned response code:', response.status, response.statusText);
-        this.app.setPluginError(`Failed to send track - check logs for details.`);
+      } catch (err) {
+        this.app.debug(`Attempt ${attempt} failed:`, err.message);
+        
+        // Bei letztem Versuch Fehler setzen
+        if (attempt === maxRetries) {
+          this.app.debug('Could not send track to API after', maxRetries, 'attempts:', err);
+          this.app.setPluginError(`Failed to send track after ${maxRetries} attempts - check logs for details.`);
+        } else {
+          // Kurze Pause vor nächstem Versuch
+          const waitTime = 2000 * attempt; // 2s, 4s
+          this.app.debug(`Waiting ${waitTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
       }
-    } catch (err) {
-      this.app.debug('Could not send track to API due to error:', err);
-      this.app.setPluginError(`Failed to send track - check logs for details.`);
     }
   }
-
   async createTrack(inputPath) {
     const fileStream = fs.createReadStream(inputPath);
     const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });

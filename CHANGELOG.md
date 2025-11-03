@@ -1,3 +1,6 @@
+0.1.25-beta.1
+* CHANGE: User Reported Timout Issues on VE Cebro with a small CPU (https://github.com/noforeignland/nfl-signalk/issues/7). So added a timout option and retry for the API call.
+
 0.1.24
 * CHANGE: testInternet only uses ipv4 now, some users don't have ipv6 configured properly and where unable to reach the API, when testInternet returned false
 * NEW: PluginStatus on SK dashboard now shows last savePoint and last API transfer, so a user has more feedback what the app is doing without enabling the debug log and crawling though it.
