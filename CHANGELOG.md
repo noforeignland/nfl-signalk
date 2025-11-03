@@ -1,5 +1,5 @@
 0.1.25-beta.1
-* CHANGE: User Reported Timout Issues on VE Cebro with a small CPU (https://github.com/noforeignland/nfl-signalk/issues/7). So added a timout option and retry for the API call.
+* CHANGE: User mattzilla470 reported timout Issues on VE Cerbo with a small CPU (https://github.com/noforeignland/nfl-signalk/issues/7). So added a timout option in the plugin config and a tripple retry while increasing the timeout for the API call.
 
 0.1.24
 * CHANGE: testInternet only uses ipv4 now, some users don't have ipv6 configured properly and where unable to reach the API, when testInternet returned false
