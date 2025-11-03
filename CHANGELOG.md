@@ -20,3 +20,8 @@
 0.1.23
 * Final version after successful testing @MOIN and @KIAPA NUI
 
+0.1.24
+* CHANGE: testInternet only uses ipv4 now, some users don't have ipv6 configured properly and where unable to reach the API, when testInternet returned false
+* NEW: PluginStatus on SK dashboard now shows last savePoint and last API transfer, so a user has more feedback what the app is doing without enabling the debug log and crawling though it.
+* CHANGE: Renamed CHANGELOG to CHANGELOG.md
+* Final version after successful testing @MOIN and @KIAPA NUI

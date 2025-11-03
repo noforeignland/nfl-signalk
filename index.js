@@ -27,6 +27,7 @@ class SignalkToNoforeignland {
     this.upSince = null;
     this.cron = null;
     this.options = {};
+    this.lastSuccessfulTransfer = null;
   }
 
   getSchema() {
@@ -270,15 +271,20 @@ class SignalkToNoforeignland {
   }}
 
 
-  async savePoint(point) {
-    const obj = {
-      lat: point.pos.latitude,
-      lon: point.pos.longitude,
-      t: point.timestamp
-    };
-    this.app.debug(`save data point:`, obj);
-    await fs.appendFile(path.join(this.options.trackDir, routeSaveName), JSON.stringify(obj) + EOL);
-  }
+ async savePoint(point) {
+  const obj = {
+    lat: point.pos.latitude,
+    lon: point.pos.longitude,
+    t: point.timestamp
+  };
+  this.app.debug(`save data point:`, obj);
+  await fs.appendFile(path.join(this.options.trackDir, routeSaveName), JSON.stringify(obj) + EOL);
+  
+  // Inform user about last saved point
+  const lastSaveTime = new Date().toLocaleString();
+  const lastTransferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toLocaleString() : 'Never';
+  this.app.setPluginStatus(`Last save: ${lastSaveTime} | Last transfer: ${lastTransferTime}`);
+ }
 
   isValidLatitude(obj) {
     return this.isDefinedNumber(obj) && obj > -90 && obj < 90;
@@ -361,12 +367,33 @@ class SignalkToNoforeignland {
       } 
   }
 
-  async testInternet() {
-    this.app.debug('testing internet connection');
-    const check = await isReachable(internetTestAddress, { timeout: this.options.internetTestTimeout || internetTestTimeout });
-    this.app.debug('internet connection = ', check);
-    return check;
+ async testInternet() {
+  const dns = require('dns').promises;
+  
+  this.app.debug('testing internet connection');
+  
+  try {
+    // Force IPv4 DNS lookup with timeout
+    const timeoutMs = this.options.internetTestTimeout || internetTestTimeout;
+    const addresses = await Promise.race([
+      dns.resolve4(internetTestAddress),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('DNS timeout')), timeoutMs)
+      )
+    ]);
+    
+    if (addresses && addresses.length > 0) {
+      this.app.debug('internet connection = true, resolved IPv4:', addresses[0]);
+      return true;
+    } else {
+      this.app.debug('internet connection = false, no IPv4 addresses found');
+      return false;
+    }
+  } catch (err) {
+    this.app.debug('internet connection = false, error:', err.message);
+    return false;
   }
+ }
 
   async checkTrack() {
     const trackFile = path.join(this.options.trackDir, routeSaveName);
@@ -407,6 +434,7 @@ class SignalkToNoforeignland {
       if (response.ok) {
         const responseBody = await response.json();
         if (responseBody.status === 'ok') {
+          this.lastSuccessfulTransfer = new Date();
           this.app.debug('Track successfully sent to API');
           this.app.setPluginStatus(`Started - last Track sent successfully at ${new Date().toLocaleString()}`);
           if (this.options.keepFiles) {
