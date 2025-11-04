@@ -288,11 +288,10 @@ class SignalkToNoforeignland {
   this.app.debug(`save data point:`, obj);
   await fs.appendFile(path.join(this.options.trackDir, routeSaveName), JSON.stringify(obj) + EOL);
   
-  // Inform user about last saved point
-  const lastSaveTime = new Date().toLocaleString();
-  const lastTransferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toLocaleString() : 'Never';
+  const lastSaveTime = new Date().toISOString();
+  const lastTransferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'Never';
   this.app.setPluginStatus(`Last save: ${lastSaveTime} | Last transfer: ${lastTransferTime}`);
- }
+  }
 
   isValidLatitude(obj) {
     return this.isDefinedNumber(obj) && obj > -90 && obj < 90;
@@ -464,7 +463,7 @@ class SignalkToNoforeignland {
           if (responseBody.status === 'ok') {
             this.lastSuccessfulTransfer = new Date();
             this.app.debug('Track successfully sent to API');
-            this.app.setPluginStatus(`Started - last Track sent successfully at ${new Date().toLocaleString()}`);
+            this.app.setPluginStatus(`Started - last Track sent successfully at ${new Date().toISOString()}`);
             if (this.options.keepFiles) {
               const filename = new Date().toJSON().slice(0, 19).replace(/:/g, '') + '-nfl-track.jsonl';
               this.app.debug('moving and keeping track file: ', filename);
