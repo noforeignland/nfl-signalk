@@ -30,77 +30,98 @@ class SignalkToNoforeignland {
     this.lastSuccessfulTransfer = null;
   }
 
-  getSchema() {
-    return {
-      title: this.pluginName,
-      description: 'Some parameters need for use',
-      type: 'object',
-      required: ['apiCron', 'boatApiKey'],
-      properties: {
-        trackFrequency: {
-          type: 'integer',
-          title: 'Position tracking frequency in seconds.',
-          description: 'To keep file sizes small we only log positions once in a while (unless you set this value to 0)',
-          default: 60
-        },
-        minMove: {
-          type: 'number',
-          title: 'Minimum boat move to log in meters',
-          description: 'To keep file sizes small we only log positions if a move larger than this size (if set to 0 will log every move)',
-          default: 50
-        },
-        minSpeed: {
-          type: 'number',
-          title: 'Minimum boat speed to log in knots',
-          description: 'To keep file sizes small we only log positions if boat speed goes above this value to minimize recording position on anchor or mooring (if set to 0 will log every move)',
-          default: 1.5
-        },
-        apiCron: {
-          type: 'string',
-          title: 'Send attempt CRON',
-          description: 'We send the tracking data to NFL once in a while, you can set the schedule with this setting.\nCRON format: https://crontab.guru/',
-          default: '*/10 * * * *'
-        },
-        boatApiKey: {
-          type: 'string',
-          title: 'Boat API key',
-          description: 'Boat API key from noforeignland.com. Can be found in Account > Settings > Boat tracking > API Key.\n*required only in API method is set*'
-        },
-        internetTestTimeout: {
-          type: 'number',
-          title: 'Timeout for testing internet connection in ms',
-          description: 'Set this number higher for slower computers and internet connections',
-          default: 2000
-        },
-        sendWhileMoving: {
-          type: 'boolean',
-          title: 'Attempt sending location while moving',
-          description: 'Should the plugin attempt to send tracking data to NFL while detecting the vessel is moving or only when stopped?',
-          default: true
-        },
-        filterSource: {
-          type: 'string',
-          title: 'Position source device',
-          description: 'Set this value to the name of a source if you want to only use the position given by that source.'
-        },
-        trackDir: {
-          type: 'string',
-          title: 'Directory to cache tracks.',
-          description: 'Path in server filesystem, absolute or from plugin directory.\noptional param (only used to keep file cache).'
-        },
-        keepFiles: {
-          type: 'boolean',
-          title: 'Should keep track files on disk?',
-          description: 'If you have a lot of hard drive space you can keep the track files for logging purposes.',
-          default: false
-        },
-        ping_api_every_24h: {
-          type: 'boolean',
-          title: 'Should I force a send every 24 hours',
-          description: 'Keeps your boat active on NFL in your current location even if you do not move',
-          default: true
-        },
-        apiTimeout: {
+getSchema() {
+  return {
+    title: this.pluginName,
+    description: 'Some parameters need for use',
+    type: 'object',
+    required: ['boatApiKey', 'apiCron'],
+    properties: {
+      // Mandatory Settings Group
+      mandatory: {
+        type: 'object',
+        title: 'Mandatory Settings',
+        properties: {
+          boatApiKey: {
+            type: 'string',
+            title: 'Boat API key',
+            description: 'Boat API key from noforeignland.com. Can be found in Account > Settings > Boat tracking > API Key.'
+          }
+        }
+      },
+      
+      // Advanced Settings Group
+      advanced: {
+        type: 'object',
+        title: 'Advanced Settings',
+        properties: {
+          minMove: {
+            type: 'number',
+            title: 'Minimum boat move to log in meters',
+            description: 'To keep file sizes small we only log positions if a move larger than this size (if set to 0 will log every move)',
+            default: 50
+          },
+          minSpeed: {
+            type: 'number',
+            title: 'Minimum boat speed to log in knots',
+            description: 'To keep file sizes small we only log positions if boat speed goes above this value to minimize recording position on anchor or mooring (if set to 0 will log every move)',
+            default: 1.5
+          },
+          sendWhileMoving: {
+            type: 'boolean',
+            title: 'Attempt sending location while moving',
+            description: 'Should the plugin attempt to send tracking data to NFL while detecting the vessel is moving or only when stopped?',
+            default: true
+          },
+          ping_api_every_24h: {
+            type: 'boolean',
+            title: 'Force a send every 24 hours',
+            description: 'Keeps your boat active on NFL in your current location even if you do not move',
+            default: true
+          }
+        }
+      },
+      
+      // Expert Settings Group
+      expert: {
+        type: 'object',
+        title: 'Expert Settings',
+        properties: {
+          filterSource: {
+            type: 'string',
+            title: 'Position source device',
+            description: 'EMPTY DEFAULT IS FINE - Set this value to the name of a source if you want to only use the position given by that source.'
+          },
+          trackDir: {
+            type: 'string',
+            title: 'Directory to cache tracks',
+            description: 'EMPTY DEFAULT IS FINE - Path in server filesystem, absolute or from plugin directory.\noptional param (only used to keep file cache).'
+          },
+          keepFiles: {
+            type: 'boolean',
+            title: 'Keep track files on disk',
+            description: 'If you have a lot of hard drive space you can keep the track files for logging purposes.',
+            default: false
+          },
+          trackFrequency: {
+            type: 'integer',
+            title: 'Position tracking frequency in seconds',
+            description: 'To keep file sizes small we only log positions once in a while (unless you set this value to 0)',
+            default: 60
+          },
+          apiCron: {
+            type: 'string',
+            title: 'Send attempt CRON',
+            description: 'We send the tracking data to NFL once in a while, you can set the schedule with this setting.\nCRON format: https://crontab.guru/',
+            default: '*/10 * * * *'
+          },
+          internetTestTimeout: {
+            type: 'number',
+            title: 'Timeout for testing internet connection in ms',
+            description: 'Set this number higher for slower computers and internet connections',
+            default: 2000
+          },
+          apiTimeout: {
           type: 'integer',
           title: 'API request timeout in seconds',
           description: 'Timeout for sending data to NFL API. Increase for slow connections.',
@@ -108,9 +129,11 @@ class SignalkToNoforeignland {
           minimum: 10,
           maximum: 180
         }
+        }
       }
-    };
-  }
+    }
+  };
+}
 
   getPluginObject() {
     return {
@@ -124,38 +147,107 @@ class SignalkToNoforeignland {
   }
 
   async start(options = {}, restartPlugin) {
-    // normalize options
-    this.options = Object.assign({}, options);
-    if (!this.options.trackDir) this.options.trackDir = defaultTracksDir;
-    if (!path.isAbsolute(this.options.trackDir)) {
-      this.options.trackDir = path.join(__dirname, this.options.trackDir);
+  
+  // Backward compatibility: migrate old flat structure to new nested structure
+  let needsSave = false;
+  if (options.boatApiKey && !options.mandatory) {
+    // Old config detected, migrate to new structure
+    this.app.debug('Migrating old configuration to new grouped structure');
+    needsSave = true;
+    
+    options = {
+      mandatory: {
+        boatApiKey: options.boatApiKey
+      },
+      advanced: {
+        minMove: options.minMove !== undefined ? options.minMove : 50,
+        minSpeed: options.minSpeed !== undefined ? options.minSpeed : 1.5,
+        sendWhileMoving: options.sendWhileMoving !== undefined ? options.sendWhileMoving : true,
+        ping_api_every_24h: options.ping_api_every_24h !== undefined ? options.ping_api_every_24h : true
+      },
+      expert: {
+        filterSource: options.filterSource,
+        trackDir: options.trackDir,
+        keepFiles: options.keepFiles !== undefined ? options.keepFiles : false,
+        trackFrequency: options.trackFrequency !== undefined ? options.trackFrequency : 60,
+        internetTestTimeout: options.internetTestTimeout !== undefined ? options.internetTestTimeout : 2000,
+        apiCron: options.apiCron || '*/10 * * * *',
+        apiTimeout: options.apiTimeout !== undefined ? options.apiTimeout : 30
+      }
+    };
+    
+    // Save the migrated configuration
+    try {
+      this.app.debug('Saving migrated configuration...');
+      await this.app.savePluginOptions(options, () => {
+        this.app.debug('Configuration successfully migrated and saved');
+      });
+    } catch (err) {
+      this.app.debug('Failed to save migrated configuration:', err.message);
+      // Continue anyway - the migration will work in memory
     }
-
-    if (!this.createDir(this.options.trackDir)) {
-      this.stop();
-      return;
-    }
-
-    this.app.debug('track logger started, now logging to', this.options.trackDir);
-    this.app.setPluginStatus(`Started`);
-    this.upSince = new Date().getTime();
-
-    // adjust default CRON if unchanged
-    if (!this.options.apiCron || this.options.apiCron === '*/10 * * * *') {
-      const startMinute = Math.floor(Math.random() * 10);
-      const startSecond = Math.floor(Math.random() * 60);
-      this.options.apiCron = `${startSecond} ${startMinute}/10 * * * *`;
-    }
-
-    this.app.debug('Setting CRON to ', this.options.apiCron);
-
-    // subscribe and logging
-    this.doLogging();
-
-    // start cron job
-    this.cron = new CronJob(this.options.apiCron, this.interval.bind(this));
-    this.cron.start();
   }
+
+  // Flatten the nested structure for easier access and apply defaults
+  this.options = {
+    // Mandatory defaults
+    boatApiKey: options.mandatory?.boatApiKey,
+    
+    // Advanced defaults
+    minMove: options.advanced?.minMove !== undefined ? options.advanced.minMove : 50,
+    minSpeed: options.advanced?.minSpeed !== undefined ? options.advanced.minSpeed : 1.5,
+    sendWhileMoving: options.advanced?.sendWhileMoving !== undefined ? options.advanced.sendWhileMoving : true,
+    ping_api_every_24h: options.advanced?.ping_api_every_24h !== undefined ? options.advanced.ping_api_every_24h : true,
+    
+    // Expert defaults
+    filterSource: options.expert?.filterSource,
+    trackDir: options.expert?.trackDir || defaultTracksDir,
+    keepFiles: options.expert?.keepFiles !== undefined ? options.expert.keepFiles : false,
+    trackFrequency: options.expert?.trackFrequency !== undefined ? options.expert.trackFrequency : 60,
+    internetTestTimeout: options.expert?.internetTestTimeout !== undefined ? options.expert.internetTestTimeout : 2000,
+    apiCron: options.expert?.apiCron || '*/10 * * * *',
+    apiTimeout: options.expert?.apiTimeout !== undefined ? options.expert.apiTimeout : 30
+  };
+  
+  // Validate that boatApiKey is set
+  if (!this.options.boatApiKey || this.options.boatApiKey.trim() === '') {
+    const errorMsg = 'No boat API key configured. Please set your API key in plugin settings (Mandatory Settings > Boat API key). You can find your API key at noforeignland.com under Account > Settings > Boat tracking > API Key.';
+    this.app.debug(errorMsg);
+    this.app.setPluginError(errorMsg);
+    this.stop();
+    return;
+  }
+  
+  if (!path.isAbsolute(this.options.trackDir)) {
+    this.options.trackDir = path.join(__dirname, this.options.trackDir);
+  }
+
+  if (!this.createDir(this.options.trackDir)) {
+    this.stop();
+    return;
+  }
+
+  this.app.debug('track logger started, now logging to', this.options.trackDir);
+  this.app.setPluginStatus(`Started${needsSave ? ' (config migrated)' : ''}`);
+  this.upSince = new Date().getTime();
+
+  // adjust default CRON if unchanged
+  if (!this.options.apiCron || this.options.apiCron === '*/10 * * * *') {
+    const startMinute = Math.floor(Math.random() * 10);
+    const startSecond = Math.floor(Math.random() * 60);
+    this.options.apiCron = `${startSecond} ${startMinute}/10 * * * *`;
+  }
+
+  this.app.debug('Setting CRON to ', this.options.apiCron);
+  this.app.debug('trackFrequency is set to', this.options.trackFrequency, 'seconds');
+
+  // subscribe and logging
+  this.doLogging();
+
+  // start cron job
+  this.cron = new CronJob(this.options.apiCron, this.interval.bind(this));
+  this.cron.start();
+}
 
   stop() {
     this.app.debug('plugin stopped');
@@ -289,7 +381,7 @@ class SignalkToNoforeignland {
   await fs.appendFile(path.join(this.options.trackDir, routeSaveName), JSON.stringify(obj) + EOL);
   
   const lastSaveTime = new Date().toISOString();
-  const lastTransferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'Never';
+  const lastTransferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'Not transfered since plugin start';
   this.app.setPluginStatus(`Last save: ${lastSaveTime} | Last transfer: ${lastTransferTime}`);
   }
 
