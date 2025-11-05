@@ -1,5 +1,10 @@
+0.1.25
+* CHANGE: Minimum boat move default increased from 50m to 80m
+* CHANGE: Updated the README.md
+* Final version after successful testing SV MOIN and SV KIAPA NUI
+
 0.1.25-beta.3
-* NEW: Check if boat key ist set on startup, else report error to dashboard
+* NEW: Check if boat key is set on startup, else report error to dashboard
 * CHANGE: Changing the order and label of the Plugin Settings to make it more clear for unexpierienced users and grouped to Mandatory, Advanced and Expert.
 * CHANGE: Migration of < 0.1.25 Plugin settings to new structure.
 * CHANGE: PluginStatus last track sent "Never" changed to "Not transfered since plugin start" to avoid confusions.

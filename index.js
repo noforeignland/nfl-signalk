@@ -44,8 +44,8 @@ getSchema() {
         properties: {
           boatApiKey: {
             type: 'string',
-            title: 'Boat API key',
-            description: 'Boat API key from noforeignland.com. Can be found in Account > Settings > Boat tracking > API Key.'
+            title: 'Boat API Key',
+            description: 'Boat API Key from noforeignland.com. Can be found in Account > Settings > Boat tracking > API Key.'
           }
         }
       },
@@ -59,7 +59,7 @@ getSchema() {
             type: 'number',
             title: 'Minimum boat move to log in meters',
             description: 'To keep file sizes small we only log positions if a move larger than this size (if set to 0 will log every move)',
-            default: 50
+            default: 80
           },
           minSpeed: {
             type: 'number',
@@ -194,7 +194,7 @@ getSchema() {
     boatApiKey: options.mandatory?.boatApiKey,
     
     // Advanced defaults
-    minMove: options.advanced?.minMove !== undefined ? options.advanced.minMove : 50,
+    minMove: options.advanced?.minMove !== undefined ? options.advanced.minMove : 80,
     minSpeed: options.advanced?.minSpeed !== undefined ? options.advanced.minSpeed : 1.5,
     sendWhileMoving: options.advanced?.sendWhileMoving !== undefined ? options.advanced.sendWhileMoving : true,
     ping_api_every_24h: options.advanced?.ping_api_every_24h !== undefined ? options.advanced.ping_api_every_24h : true,
