@@ -1,6 +1,7 @@
 0.1.25
 * CHANGE: Minimum boat move default increased from 50m to 80m
 * CHANGE: Updated the README.md
+* CHANGE: Use public ipv4 DNS instead of local with cache
 * Final version after successful testing SV MOIN and SV KIAPA NUI
 
 0.1.25-beta.3

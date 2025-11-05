@@ -466,33 +466,41 @@ getSchema() {
       } 
   }
 
- async testInternet() {
+  async testInternet() {
   const dns = require('dns').promises;
   
   this.app.debug('testing internet connection');
   
-  try {
-    // Force IPv4 DNS lookup with timeout
-    const timeoutMs = this.options.internetTestTimeout || internetTestTimeout;
-    const addresses = await Promise.race([
-      dns.resolve4(internetTestAddress),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('DNS timeout')), timeoutMs)
-      )
-    ]);
-    
-    if (addresses && addresses.length > 0) {
-      this.app.debug('internet connection = true, resolved IPv4:', addresses[0]);
+  const timeoutMs = this.options.internetTestTimeout || 2000;
+  
+  // Prüfe mehrere öffentliche DNS-Server
+  const dnsServers = [
+    { name: 'Google DNS', ip: '8.8.8.8' },
+    { name: 'Cloudflare DNS', ip: '1.1.1.1' }
+  ];
+  
+  for (const server of dnsServers) {
+    try {
+      // Versuche, den DNS-Server direkt zu erreichen
+      // Wir machen einen reverse lookup auf die IP selbst
+      const result = await Promise.race([
+        dns.reverse(server.ip),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('DNS timeout')), timeoutMs)
+        )
+      ]);
+      
+      this.app.debug(`internet connection = true, ${server.name} (${server.ip}) is reachable`);
       return true;
-    } else {
-      this.app.debug('internet connection = false, no IPv4 addresses found');
-      return false;
+    } catch (err) {
+      this.app.debug(`${server.name} (${server.ip}) not reachable:`, err.message);
+      // Weiter zum nächsten Server
     }
-  } catch (err) {
-    this.app.debug('internet connection = false, error:', err.message);
-    return false;
   }
- }
+  
+  this.app.debug('internet connection = false, no public DNS servers reachable');
+  return false;
+}
 
   async checkTrack() {
     const trackFile = path.join(this.options.trackDir, routeSaveName);
