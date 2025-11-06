@@ -1,7 +1,7 @@
 0.1.25
 * CHANGE: Minimum boat move default increased from 50m to 80m
 * CHANGE: Updated the README.md
-* CHANGE: Use public ipv4 DNS instead of local with cache
+* CHANGE: Use public ipv4 DNS instead of local with cache for testInternet()
 * Final version after successful testing SV MOIN and SV KIAPA NUI
 
 0.1.25-beta.3
@@ -19,7 +19,7 @@
 * CHANGE: User mattzilla470 reported timout Issues on VE Cerbo with a small CPU and using 4G (https://github.com/noforeignland/nfl-signalk/issues/7). So added a timout option in the plugin config and a tripple retry while increasing the timeout for the API call.
 
 0.1.24
-* CHANGE: testInternet only uses ipv4 now, some users don't have ipv6 configured properly and where unable to reach the API, when testInternet returned false
+* CHANGE: testInternet() only uses ipv4 now, some users don't have ipv6 configured properly and where unable to reach the API, when testInternet returned false
 * NEW: PluginStatus on SK dashboard now shows last savePoint and last API transfer, so a user has more feedback what the app is doing without enabling the debug log and crawling though it.
 * CHANGE: Renamed CHANGELOG to CHANGELOG.md
 * CHANGE: CHANGELOG ORDER - newest on top.
