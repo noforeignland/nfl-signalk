@@ -1,4 +1,4 @@
-# SignalK To NFL
+# Signal K To NFL
 Effortlessly log your boat's movement to **noforeignland.com**
 
 ## Features
