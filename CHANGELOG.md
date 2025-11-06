@@ -1,3 +1,6 @@
+0.1.26
+* Same as 0.1.26-beta.1 
+
 0.1.26-beta.1
 * CHANGE: PluginStatus last track sent "Not transfered since plugin start" gets truncated by the dashboard. Changed to "None since start"
 
