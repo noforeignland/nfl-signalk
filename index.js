@@ -381,7 +381,7 @@ getSchema() {
   await fs.appendFile(path.join(this.options.trackDir, routeSaveName), JSON.stringify(obj) + EOL);
   
   const lastSaveTime = new Date().toISOString();
-  const lastTransferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'Not transfered since plugin start';
+  const lastTransferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'None since start';
   this.app.setPluginStatus(`Last save: ${lastSaveTime} | Last transfer: ${lastTransferTime}`);
   }
 

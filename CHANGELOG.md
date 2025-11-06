@@ -1,3 +1,6 @@
+0.1.26-beta.1
+* CHANGE: PluginStatus last track sent "Not transfered since plugin start" gets truncated by the dashboard. Changed to "None since start"
+
 0.1.25
 * CHANGE: Minimum boat move default increased from 50m to 80m
 * CHANGE: Updated the README.md
