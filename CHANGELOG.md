@@ -1,3 +1,6 @@
+0.1.28-beta.1
+* CHANGE: By design SK deletes the track folder upon Pluging update via the Appstore, so we have to save the long term track in a different location, default folder: signalk-to-noforeignland-data
+
 0.1.27
 * Final version after successful testing SV MOIN and SV KIAPA NUI
 

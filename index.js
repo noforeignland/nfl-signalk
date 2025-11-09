@@ -6,11 +6,10 @@ const path = require('path');
 const CronJob = require('cron').CronJob;
 const readline = require('readline');
 const fetch = require('node-fetch');
-const isReachable = require('is-reachable');
 
 const apiUrl = 'https://www.noforeignland.com/home/api/v1/boat/tracking/track';
 const pluginApiKey = '0ede6cb6-5213-45f5-8ab4-b4836b236f97';
-const defaultTracksDir = 'track';
+const defaultTracksDir = 'signalk-to-noforeignland-data';  // Changed: store in SignalK data directory
 const routeSaveName = 'nfl-track-pending.jsonl';  // Changed: separate pending file
 const routeSentName = 'nfl-track-sent.jsonl';      // New: archive for sent data
 
@@ -96,7 +95,7 @@ getSchema() {
           trackDir: {
             type: 'string',
             title: 'Directory to cache tracks',
-            description: 'EMPTY DEFAULT IS FINE - Path in server filesystem, absolute or from plugin directory.\noptional param (only used to keep file cache).'
+            description: 'EMPTY DEFAULT IS FINE - Path to store track data. Relative paths are stored in SignalK data directory (safe from plugin updates). Absolute paths can point anywhere.\nDefault: signalk-to-noforeignland-data'
           },
           keepFiles: {
             type: 'boolean',
@@ -223,8 +222,11 @@ getSchema() {
     return;
   }
   
+  // NEW: Resolve track directory path
   if (!path.isAbsolute(this.options.trackDir)) {
-    this.options.trackDir = path.join(__dirname, this.options.trackDir);
+    // If relative path, store in SignalK's data directory, not in plugin directory
+    const signalkDataDir = this.app.config.configPath || path.join(require('os').homedir(), '.signalk');
+    this.options.trackDir = path.join(signalkDataDir, this.options.trackDir);
   }
 
   if (!this.createDir(this.options.trackDir)) {
@@ -271,6 +273,44 @@ getSchema() {
         this.app.debug('Migrating old track file to new naming scheme...');
         await fs.move(oldTrackFile, newPendingFile);
         this.app.debug('Successfully migrated old track file to:', routeSaveName);
+      }
+      
+      // NEW: Also check old plugin directory location and migrate if found
+      const oldPluginTrackDir = path.join(__dirname, 'track');
+      if (await fs.pathExists(oldPluginTrackDir)) {
+        this.app.debug('Found old track directory in plugin folder, migrating to new location...');
+        
+        // Migrate old pending file
+        const oldPluginPending = path.join(oldPluginTrackDir, 'nfl-track.jsonl');
+        const oldPluginNewPending = path.join(oldPluginTrackDir, routeSaveName);
+        
+        if (await fs.pathExists(oldPluginPending) && !(await fs.pathExists(newPendingFile))) {
+          await fs.move(oldPluginPending, newPendingFile);
+          this.app.debug('Migrated pending track file from old plugin location');
+        } else if (await fs.pathExists(oldPluginNewPending) && !(await fs.pathExists(newPendingFile))) {
+          await fs.move(oldPluginNewPending, newPendingFile);
+          this.app.debug('Migrated pending track file from old plugin location');
+        }
+        
+        // Migrate sent archive if it exists
+        const oldPluginSent = path.join(oldPluginTrackDir, routeSentName);
+        const newSentFile = path.join(this.options.trackDir, routeSentName);
+        if (await fs.pathExists(oldPluginSent) && !(await fs.pathExists(newSentFile))) {
+          await fs.move(oldPluginSent, newSentFile);
+          this.app.debug('Migrated sent track archive from old plugin location');
+        }
+        
+        // Try to remove old directory if it's now empty
+        try {
+          const remainingFiles = await fs.readdir(oldPluginTrackDir);
+          if (remainingFiles.length === 0) {
+            await fs.rmdir(oldPluginTrackDir);
+            this.app.debug('Removed empty old track directory');
+          }
+        } catch (err) {
+          // Non-fatal, just leave it
+          this.app.debug('Could not remove old track directory:', err.message);
+        }
       }
     } catch (err) {
       this.app.debug('Error during track file migration:', err.message);
