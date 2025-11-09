@@ -1,17 +1,15 @@
 const { EOL } = require('os');
-const internetTestAddress = 'google.com';
-const internetTestTimeout = 1000;
 const fs = require('fs-extra');
 const path = require('path');
 const CronJob = require('cron').CronJob;
 const readline = require('readline');
 const fetch = require('node-fetch');
-const isReachable = require('is-reachable');
 
 const apiUrl = 'https://www.noforeignland.com/home/api/v1/boat/tracking/track';
 const pluginApiKey = '0ede6cb6-5213-45f5-8ab4-b4836b236f97';
 const defaultTracksDir = 'track';
-const routeSaveName = 'nfl-track.jsonl';
+const routeSaveName = 'nfl-track-pending.jsonl';  // Changed: separate pending file
+const routeSentName = 'nfl-track-sent.jsonl';      // New: archive for sent data
 
 class SignalkToNoforeignland {
   constructor(app) {
@@ -227,6 +225,9 @@ getSchema() {
     return;
   }
 
+  // NEW: Migrate old track file to new naming scheme on startup
+  await this.migrateOldTrackFile();
+
   this.app.debug('track logger started, now logging to', this.options.trackDir);
   this.app.setPluginStatus(`Started${needsSave ? ' (config migrated)' : ''}`);
   this.upSince = new Date().getTime();
@@ -248,6 +249,24 @@ getSchema() {
   this.cron = new CronJob(this.options.apiCron, this.interval.bind(this));
   this.cron.start();
 }
+
+  // NEW: Migrate old track file naming to new scheme
+  async migrateOldTrackFile() {
+    const oldTrackFile = path.join(this.options.trackDir, 'nfl-track.jsonl');
+    const newPendingFile = path.join(this.options.trackDir, routeSaveName);
+    
+    try {
+      // Check if old file exists and new pending file doesn't
+      if (await fs.pathExists(oldTrackFile) && !(await fs.pathExists(newPendingFile))) {
+        this.app.debug('Migrating old track file to new naming scheme...');
+        await fs.move(oldTrackFile, newPendingFile);
+        this.app.debug('Successfully migrated old track file to:', routeSaveName);
+      }
+    } catch (err) {
+      this.app.debug('Error during track file migration:', err.message);
+      // Non-fatal error, continue startup
+    }
+  }
 
   stop() {
     this.app.debug('plugin stopped');
@@ -378,6 +397,7 @@ getSchema() {
     t: point.timestamp
   };
   this.app.debug(`save data point:`, obj);
+  // CHANGED: Save to pending file
   await fs.appendFile(path.join(this.options.trackDir, routeSaveName), JSON.stringify(obj) + EOL);
   
   const lastSaveTime = new Date().toISOString();
@@ -503,6 +523,7 @@ getSchema() {
 }
 
   async checkTrack() {
+    // CHANGED: Check pending file instead
     const trackFile = path.join(this.options.trackDir, routeSaveName);
     this.app.debug('checking the track', trackFile, 'if should send');
     const exists = await fs.pathExists(trackFile);
@@ -522,7 +543,9 @@ getSchema() {
 
   async sendApiData() {
     this.app.debug('sending the data');
-    const trackData = await this.createTrack(path.join(this.options.trackDir, routeSaveName));
+    // CHANGED: Read from pending file
+    const pendingFile = path.join(this.options.trackDir, routeSaveName);
+    const trackData = await this.createTrack(pendingFile);
     if (!trackData) {
       this.app.debug('Recorded track did not contain any valid track points, aborting sending.');
       this.app.setPluginError(`Failed to send track - Recorded track did not contain any valid track points, aborting sending.`);
@@ -564,14 +587,9 @@ getSchema() {
             this.lastSuccessfulTransfer = new Date();
             this.app.debug('Track successfully sent to API');
             this.app.setPluginStatus(`Started - last Track sent successfully at ${new Date().toISOString()}`);
-            if (this.options.keepFiles) {
-              const filename = new Date().toJSON().slice(0, 19).replace(/:/g, '') + '-nfl-track.jsonl';
-              this.app.debug('moving and keeping track file: ', filename);
-              await fs.move(path.join(this.options.trackDir, routeSaveName), path.join(this.options.trackDir, filename));
-            } else {
-              this.app.debug('Deleting track file');
-              await fs.remove(path.join(this.options.trackDir, routeSaveName));
-            }
+            
+            // CHANGED: New file handling logic
+            await this.handleSuccessfulSend(pendingFile);
             return; // Erfolg - beende Funktion
           } else {
             this.app.debug('Could not send track to API, returned response json:', responseBody);
@@ -605,6 +623,39 @@ getSchema() {
       }
     }
   }
+
+  // NEW: Handle file operations after successful send
+  async handleSuccessfulSend(pendingFile) {
+    const sentFile = path.join(this.options.trackDir, routeSentName);
+    
+    try {
+      if (this.options.keepFiles) {
+        // Append pending data to sent archive
+        this.app.debug('Appending sent data to archive file:', routeSentName);
+        
+        // Read pending file content
+        const pendingContent = await fs.readFile(pendingFile, 'utf8');
+        
+        // Append to sent file (create if doesn't exist)
+        await fs.appendFile(sentFile, pendingContent);
+        
+        this.app.debug('Successfully archived sent track data');
+      } else {
+        this.app.debug('keepFiles disabled, will delete pending file');
+      }
+      
+      // Always delete the pending file after successful send
+      this.app.debug('Deleting pending track file');
+      await fs.remove(pendingFile);
+      this.app.debug('Successfully processed track files after send');
+      
+    } catch (err) {
+      this.app.debug('Error handling files after successful send:', err.message);
+      // Non-fatal: Data was sent successfully, file handling is secondary
+      // Next save will create a new pending file anyway
+    }
+  }
+
   async createTrack(inputPath) {
     const fileStream = fs.createReadStream(inputPath);
     const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
