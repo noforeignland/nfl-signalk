@@ -17,7 +17,7 @@ cp -a .signalk/node_modules/signalk-to-noforeignland/* nfl-backup/
 2.  Get new files from repo (main for latest)
 
 ```
-cd .signalk/node_modules/signalk-to-noforeignland/
+cd ~/.signalk/node_modules/signalk-to-noforeignland/
 rm *
 #NOTE: Trackdir will not be deleted, this is what we want.
 wget  https://github.com/noforeignland/nfl-signalk/archive/refs/heads/main.zip

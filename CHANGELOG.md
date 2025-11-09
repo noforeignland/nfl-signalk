@@ -1,6 +1,9 @@
+0.1.27
+* Final version after successful testing SV MOIN and SV KIAPA NUI
+
 0.1.27-beta.1
 * NEW: NPMJS requires new method for publishing. The old tokens will expire Nov 19th, 2025, so moving to OIDC authentication.
-* NEW: Check the GPS status in navigation.position, else retry or throw PluginError on Dashboard
+* NEW: Check the GPS status in navigation.position, else retry and throw PluginError on Dashboard
 * CHANGE: Keep track data on disk rewritten and migrate old files to new structure, so nfl-track-sent.jsonl becomes a continuous archive of all sent track data over time, when enabled. New Logic:
 * * New points accumulate in nfl-track-pending.jsonl
 * * Send succeeds → API confirms receipt
