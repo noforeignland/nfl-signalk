@@ -1,9 +1,12 @@
 const { EOL } = require('os');
+const internetTestAddress = 'google.com';
+const internetTestTimeout = 1000;
 const fs = require('fs-extra');
 const path = require('path');
 const CronJob = require('cron').CronJob;
 const readline = require('readline');
 const fetch = require('node-fetch');
+const isReachable = require('is-reachable');
 
 const apiUrl = 'https://www.noforeignland.com/home/api/v1/boat/tracking/track';
 const pluginApiKey = '0ede6cb6-5213-45f5-8ab4-b4836b236f97';
@@ -146,6 +149,10 @@ getSchema() {
 
   async start(options = {}, restartPlugin) {
   
+  // Position data health check
+  this.positionCheckInterval = null;
+  this.lastPositionReceived = null;
+  
   // Backward compatibility: migrate old flat structure to new nested structure
   let needsSave = false;
   if (options.boatApiKey && !options.mandatory) {
@@ -248,6 +255,9 @@ getSchema() {
   // start cron job
   this.cron = new CronJob(this.options.apiCron, this.interval.bind(this));
   this.cron.start();
+  
+  // Start position health check (every 5 minutes)
+  this.startPositionHealthCheck();
 }
 
   // NEW: Migrate old track file naming to new scheme
@@ -270,6 +280,13 @@ getSchema() {
 
   stop() {
     this.app.debug('plugin stopped');
+    
+    // Stop position health check
+    if (this.positionCheckInterval) {
+      clearInterval(this.positionCheckInterval);
+      this.positionCheckInterval = null;
+    }
+    
     if (this.cron) {
       this.cron.stop();
       this.cron = undefined;
@@ -379,6 +396,7 @@ getSchema() {
 
       // Punkt speichern
       this.lastPosition = { pos: value.value, timestamp, currentTime: new Date().getTime() };
+      this.lastPositionReceived = new Date().getTime(); // Track for health check
       await this.savePoint(this.lastPosition);
 
       // shouldDoLog zurücksetzen wenn minSpeed aktiv ist
@@ -461,6 +479,57 @@ getSchema() {
       }
     }
     return res;
+  }
+
+  // NEW: Position health check
+  startPositionHealthCheck() {
+    // Check every 5 minutes if we're receiving position data
+    this.positionCheckInterval = setInterval(() => {
+      const now = new Date().getTime();
+      const timeSinceLastPosition = this.lastPositionReceived 
+        ? (now - this.lastPositionReceived) / 1000 
+        : null;
+      
+      // Build appropriate error message based on filterSource setting
+      const filterMsg = this.options.filterSource 
+        ? ` from source '${this.options.filterSource}'` 
+        : '';
+      
+      if (!this.lastPositionReceived) {
+        // Never received any position data
+        const errorMsg = this.options.filterSource
+          ? `No GPS position data received from filtered source '${this.options.filterSource}'. Check Expert Settings > Position source device, or leave empty to use any GPS source.`
+          : 'No GPS position data received. Check that your GPS is connected and SignalK is receiving navigation.position data.';
+        this.app.setPluginError(errorMsg);
+        this.app.debug('Position health check: No position data ever received' + filterMsg);
+      } else if (timeSinceLastPosition > 300) {
+        // No position data for more than 5 minutes
+        const errorMsg = this.options.filterSource
+          ? `No GPS position data${filterMsg} for ${Math.floor(timeSinceLastPosition / 60)} minutes. Check that source '${this.options.filterSource}' is active, or change/clear Position source device in Expert Settings.`
+          : `No GPS position data for ${Math.floor(timeSinceLastPosition / 60)} minutes. Check your GPS connection.`;
+        this.app.setPluginError(errorMsg);
+        this.app.debug(`Position health check: No position for ${timeSinceLastPosition.toFixed(0)} seconds` + filterMsg);
+      } else {
+        // Position data is flowing normally
+        this.app.debug(`Position health check: OK (last position ${timeSinceLastPosition.toFixed(0)} seconds ago${filterMsg})`);
+        // Clear any previous error if position is now flowing
+        const lastSaveTime = this.lastPosition ? new Date(this.lastPosition.currentTime).toISOString() : 'Never';
+        const lastTransferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'None since start';
+        const sourceInfo = this.options.filterSource ? ` (source: ${this.options.filterSource})` : '';
+        this.app.setPluginStatus(`Active${sourceInfo} - Last save: ${lastSaveTime} | Last transfer: ${lastTransferTime}`);
+      }
+    }, 5 * 60 * 1000); // Check every 5 minutes
+    
+    // Also do an initial check after 2 minutes
+    setTimeout(() => {
+      if (!this.lastPositionReceived) {
+        const errorMsg = this.options.filterSource
+          ? `No GPS position data received after 2 minutes from filtered source '${this.options.filterSource}'. Check Expert Settings > Position source device. You may need to leave it empty to use any available GPS source.`
+          : 'No GPS position data received after 2 minutes. Check that your GPS is connected and SignalK is receiving navigation.position data.';
+        this.app.setPluginError(errorMsg);
+        this.app.debug('Initial position check: No position data received' + (this.options.filterSource ? ` from source '${this.options.filterSource}'` : ''));
+      }
+    }, 2 * 60 * 1000);
   }
 
   // periodic interval called by cron

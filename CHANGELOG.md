@@ -1,14 +1,13 @@
 0.1.27-beta.1
-* NEW: NPMJS requires new method for publishing. The old tokens will expire Nov 19th, 2025.
-* CHANGE: Keep track data on disk rewritten and migrate old files to new structure. New Logic:
+* NEW: NPMJS requires new method for publishing. The old tokens will expire Nov 19th, 2025, so moving to OIDC authentication.
+* NEW: Check the GPS status in navigation.position, else retry or throw PluginError on Dashboard
+* CHANGE: Keep track data on disk rewritten and migrate old files to new structure, so nfl-track-sent.jsonl becomes a continuous archive of all sent track data over time, when enabled. New Logic:
 * * New points accumulate in nfl-track-pending.jsonl
 * * Send succeeds → API confirms receipt
 * * If keepFiles=true: The content of pending file is appended to nfl-track-sent.jsonl (line 588)
 * * Pending file is deleted
 * * Next GPS points → create a new pending file
 * * Next successful send → appends again to the same nfl-track-sent.jsonl
-
-So nfl-track-sent.jsonl becomes a continuous archive of all sent track data over time.
 
 0.1.26
 * Same as 0.1.26-beta.1 
