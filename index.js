@@ -1,6 +1,4 @@
 const { EOL } = require('os');
-const internetTestAddress = 'google.com';
-const internetTestTimeout = 1000;
 const fs = require('fs-extra');
 const path = require('path');
 const CronJob = require('cron').CronJob;
@@ -9,9 +7,9 @@ const fetch = require('node-fetch');
 
 const apiUrl = 'https://www.noforeignland.com/home/api/v1/boat/tracking/track';
 const pluginApiKey = '0ede6cb6-5213-45f5-8ab4-b4836b236f97';
-const defaultTracksDir = 'signalk-to-noforeignland-data';  // Changed: store in SignalK data directory
-const routeSaveName = 'nfl-track-pending.jsonl';  // Changed: separate pending file
-const routeSentName = 'nfl-track-sent.jsonl';      // New: archive for sent data
+const defaultTracksDir = 'nfl-track';
+const routeSaveName = 'pending.jsonl';
+const routeSentName = 'sent.jsonl';
 
 class SignalkToNoforeignland {
   constructor(app) {
@@ -28,112 +26,169 @@ class SignalkToNoforeignland {
     this.cron = null;
     this.options = {};
     this.lastSuccessfulTransfer = null;
+    
+    // Track status for data path updates
+    this.currentStatus = '';
+    this.currentError = null;
+    
+    // Track auto-selected source
+    this.autoSelectedSource = null;
   }
 
-getSchema() {
-  return {
-    title: this.pluginName,
-    description: 'Some parameters need for use',
-    type: 'object',
-    required: ['boatApiKey', 'apiCron'],
-    properties: {
-      // Mandatory Settings Group
-      mandatory: {
-        type: 'object',
-        title: 'Mandatory Settings',
-        properties: {
-          boatApiKey: {
-            type: 'string',
-            title: 'Boat API Key',
-            description: 'Boat API Key from noforeignland.com. Can be found in Account > Settings > Boat tracking > API Key.'
+  // Emit SignalK deltas for data paths
+  emitDelta(path, value) {
+    try {
+      const delta = {
+        context: 'vessels.self',
+        updates: [{
+          timestamp: new Date().toISOString(),
+          values: [{
+            path: path,
+            value: value
+          }]
+        }]
+      };
+      this.app.handleMessage(this.pluginId, delta);
+    } catch (err) {
+      this.app.debug(`Failed to emit delta for ${path}:`, err.message);
+    }
+  }
+
+  updateStatusPaths() {
+    const hasError = this.currentError !== null;
+  
+    // SHORT format for data path
+    if (!hasError) {
+      const activeSource = this.options.filterSource || this.autoSelectedSource || '';
+      const sourcePrefix = activeSource ? `${activeSource} | ` : '';
+      const saveTime = this.lastPosition ? new Date(this.lastPosition.currentTime).toLocaleTimeString() : 'None since start';
+      const transferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toLocaleTimeString() : 'None since start';
+      const shortStatus = `${sourcePrefix}Save: ${saveTime} | Transfer: ${transferTime}`;
+      this.emitDelta('plugin.signalk-to-noforeignland.status', shortStatus);
+    } else {
+      this.emitDelta('plugin.signalk-to-noforeignland.status', `ERROR: ${this.currentError}`);
+    }
+    this.emitDelta('plugin.signalk-to-noforeignland.status_boolean', hasError ? 1 : 0);
+  }
+
+  // Override setPluginStatus to also emit data path
+  setPluginStatus(status) {
+    this.currentStatus = status;
+    this.currentError = null;
+    this.app.setPluginStatus(status);
+    this.updateStatusPaths();
+  }
+
+  // Override setPluginError to also emit data path
+  setPluginError(error) {
+    this.currentError = error;
+    this.app.setPluginError(error);
+    this.updateStatusPaths();
+  }
+
+  getSchema() {
+    return {
+      title: this.pluginName,
+      description: 'Some parameters need for use',
+      type: 'object',
+      properties: {
+        // Mandatory Settings Group
+        mandatory: {
+          type: 'object',
+          title: 'Mandatory Settings',
+          properties: {
+            boatApiKey: {
+              type: 'string',
+              title: 'Boat API Key',
+              description: 'Boat API Key from noforeignland.com. Can be found in Account > Settings > Boat tracking > API Key.'
+            }
           }
-        }
-      },
-      
-      // Advanced Settings Group
-      advanced: {
-        type: 'object',
-        title: 'Advanced Settings',
-        properties: {
-          minMove: {
-            type: 'number',
-            title: 'Minimum boat move to log in meters',
-            description: 'To keep file sizes small we only log positions if a move larger than this size (if set to 0 will log every move)',
-            default: 80
-          },
-          minSpeed: {
-            type: 'number',
-            title: 'Minimum boat speed to log in knots',
-            description: 'To keep file sizes small we only log positions if boat speed goes above this value to minimize recording position on anchor or mooring (if set to 0 will log every move)',
-            default: 1.5
-          },
-          sendWhileMoving: {
-            type: 'boolean',
-            title: 'Attempt sending location while moving',
-            description: 'Should the plugin attempt to send tracking data to NFL while detecting the vessel is moving or only when stopped?',
-            default: true
-          },
-          ping_api_every_24h: {
-            type: 'boolean',
-            title: 'Force a send every 24 hours',
-            description: 'Keeps your boat active on NFL in your current location even if you do not move',
-            default: true
+        },
+        
+        // Advanced Settings Group
+        advanced: {
+          type: 'object',
+          title: 'Advanced Settings',
+          properties: {
+            minMove: {
+              type: 'number',
+              title: 'Minimum boat move to log in meters',
+              description: 'To keep file sizes small we only log positions if a move larger than this size (if set to 0 will log every move)',
+              default: 80
+            },
+            minSpeed: {
+              type: 'number',
+              title: 'Minimum boat speed to log in knots',
+              description: 'To keep file sizes small we only log positions if boat speed goes above this value to minimize recording position on anchor or mooring (if set to 0 will log every move)',
+              default: 1.5
+            },
+            sendWhileMoving: {
+              type: 'boolean',
+              title: 'Attempt sending location while moving',
+              description: 'Should the plugin attempt to send tracking data to NFL while detecting the vessel is moving or only when stopped?',
+              default: true
+            },
+            ping_api_every_24h: {
+              type: 'boolean',
+              title: 'Force a send every 24 hours',
+              description: 'Keeps your boat active on NFL in your current location even if you do not move',
+              default: true
+            }
           }
-        }
-      },
-      
-      // Expert Settings Group
-      expert: {
-        type: 'object',
-        title: 'Expert Settings',
-        properties: {
-          filterSource: {
-            type: 'string',
-            title: 'Position source device',
-            description: 'EMPTY DEFAULT IS FINE - Set this value to the name of a source if you want to only use the position given by that source.'
-          },
-          trackDir: {
-            type: 'string',
-            title: 'Directory to cache tracks',
-            description: 'EMPTY DEFAULT IS FINE - Path to store track data. Relative paths are stored in SignalK data directory (safe from plugin updates). Absolute paths can point anywhere.\nDefault: signalk-to-noforeignland-data'
-          },
-          keepFiles: {
-            type: 'boolean',
-            title: 'Keep track files on disk',
-            description: 'If you have a lot of hard drive space you can keep the track files for logging purposes.',
-            default: false
-          },
-          trackFrequency: {
-            type: 'integer',
-            title: 'Position tracking frequency in seconds',
-            description: 'To keep file sizes small we only log positions once in a while (unless you set this value to 0)',
-            default: 60
-          },
-          apiCron: {
-            type: 'string',
-            title: 'Send attempt CRON',
-            description: 'We send the tracking data to NFL once in a while, you can set the schedule with this setting.\nCRON format: https://crontab.guru/',
-            default: '*/10 * * * *'
-          },
-          internetTestTimeout: {
-            type: 'number',
-            title: 'Timeout for testing internet connection in ms',
-            description: 'Set this number higher for slower computers and internet connections',
-            default: 2000
-          },
-          apiTimeout: {
-          type: 'integer',
-          title: 'API request timeout in seconds',
-          description: 'Timeout for sending data to NFL API. Increase for slow connections.',
-          default: 30,
-          minimum: 10,
-          maximum: 180
-        }
+        },
+        
+        // Expert Settings Group
+        expert: {
+          type: 'object',
+          title: 'Expert Settings',
+          properties: {
+            filterSource: {
+              type: 'string',
+              title: 'Position source device',
+              description: 'EMPTY DEFAULT IS FINE - Set this value to the name of a source if you want to only use the position given by that source.'
+            },
+            trackDir: {
+              type: 'string',
+              title: 'Directory to cache tracks',
+              description: 'EMPTY DEFAULT IS FINE - Path to store track data. Relative paths are stored in plugin data directory. Absolute paths can point anywhere.\nDefault: nfl-track'
+            },
+            keepFiles: {
+              type: 'boolean',
+              title: 'Keep track files on disk',
+              description: 'If you have a lot of hard drive space you can keep the track files for logging purposes.',
+              default: false
+            },
+            trackFrequency: {
+              type: 'integer',
+              title: 'Position tracking frequency in seconds',
+              description: 'To keep file sizes small we only log positions once in a while (unless you set this value to 0)',
+              default: 60
+            },
+            apiCron: {
+              type: 'string',
+              title: 'Send attempt CRON',
+              description: 'We send the tracking data to NFL once in a while, you can set the schedule with this setting.\nCRON format: https://crontab.guru/',
+              default: '*/10 * * * *'
+            },
+            internetTestTimeout: {
+              type: 'number',
+              title: 'Timeout for testing internet connection in ms',
+              description: 'Set this number higher for slower computers and internet connections',
+              default: 2000
+            },
+            apiTimeout: {
+              type: 'integer',
+              title: 'API request timeout in seconds',
+              description: 'Timeout for sending data to NFL API. Increase for slow connections.',
+              default: 30,
+              minimum: 10,
+              maximum: 180
+            }
+          }
         }
       }
-    }
-  };
-}
+    };
+  }
 
   getPluginObject() {
     return {
@@ -147,160 +202,172 @@ getSchema() {
   }
 
   async start(options = {}, restartPlugin) {
-  
-  // Position data health check
-  this.positionCheckInterval = null;
-  this.lastPositionReceived = null;
-  
-  // Backward compatibility: migrate old flat structure to new nested structure
-  let needsSave = false;
-  if (options.boatApiKey && !options.mandatory) {
-    // Old config detected, migrate to new structure
-    this.app.debug('Migrating old configuration to new grouped structure');
-    needsSave = true;
+    // Position data health check
+    this.positionCheckInterval = null;
+    this.lastPositionReceived = null;
     
-    options = {
-      mandatory: {
-        boatApiKey: options.boatApiKey
-      },
-      advanced: {
-        minMove: options.minMove !== undefined ? options.minMove : 50,
-        minSpeed: options.minSpeed !== undefined ? options.minSpeed : 1.5,
-        sendWhileMoving: options.sendWhileMoving !== undefined ? options.sendWhileMoving : true,
-        ping_api_every_24h: options.ping_api_every_24h !== undefined ? options.ping_api_every_24h : true
-      },
-      expert: {
-        filterSource: options.filterSource,
-        trackDir: options.trackDir,
-        keepFiles: options.keepFiles !== undefined ? options.keepFiles : false,
-        trackFrequency: options.trackFrequency !== undefined ? options.trackFrequency : 60,
-        internetTestTimeout: options.internetTestTimeout !== undefined ? options.internetTestTimeout : 2000,
-        apiCron: options.apiCron || '*/10 * * * *',
-        apiTimeout: options.apiTimeout !== undefined ? options.apiTimeout : 30
+    // Backward compatibility: migrate old flat structure to new nested structure
+    let needsSave = false;
+    if (options.boatApiKey && !options.mandatory) {
+      this.app.debug('Migrating old configuration to new grouped structure');
+      needsSave = true;
+      
+      options = {
+        mandatory: {
+          boatApiKey: options.boatApiKey
+        },
+        advanced: {
+          minMove: options.minMove !== undefined ? options.minMove : 50,
+          minSpeed: options.minSpeed !== undefined ? options.minSpeed : 1.5,
+          sendWhileMoving: options.sendWhileMoving !== undefined ? options.sendWhileMoving : true,
+          ping_api_every_24h: options.ping_api_every_24h !== undefined ? options.ping_api_every_24h : true
+        },
+        expert: {
+          filterSource: options.filterSource,
+          trackDir: options.trackDir,
+          keepFiles: options.keepFiles !== undefined ? options.keepFiles : false,
+          trackFrequency: options.trackFrequency !== undefined ? options.trackFrequency : 60,
+          internetTestTimeout: options.internetTestTimeout !== undefined ? options.internetTestTimeout : 2000,
+          apiCron: options.apiCron || '*/10 * * * *',
+          apiTimeout: options.apiTimeout !== undefined ? options.apiTimeout : 30
+        }
+      };
+      
+      try {
+        this.app.debug('Saving migrated configuration...');
+        await this.app.savePluginOptions(options, () => {
+          this.app.debug('Configuration successfully migrated and saved');
+        });
+      } catch (err) {
+        this.app.debug('Failed to save migrated configuration:', err.message);
       }
+    }
+
+    // Flatten the nested structure for easier access and apply defaults
+    this.options = {
+      boatApiKey: options.mandatory?.boatApiKey,
+      minMove: options.advanced?.minMove !== undefined ? options.advanced.minMove : 80,
+      minSpeed: options.advanced?.minSpeed !== undefined ? options.advanced.minSpeed : 1.5,
+      sendWhileMoving: options.advanced?.sendWhileMoving !== undefined ? options.advanced.sendWhileMoving : true,
+      ping_api_every_24h: options.advanced?.ping_api_every_24h !== undefined ? options.advanced.ping_api_every_24h : true,
+      filterSource: options.expert?.filterSource,
+      trackDir: options.expert?.trackDir || defaultTracksDir,
+      keepFiles: options.expert?.keepFiles !== undefined ? options.expert.keepFiles : false,
+      trackFrequency: options.expert?.trackFrequency !== undefined ? options.expert.trackFrequency : 60,
+      internetTestTimeout: options.expert?.internetTestTimeout !== undefined ? options.expert.internetTestTimeout : 2000,
+      apiCron: options.expert?.apiCron || '*/10 * * * *',
+      apiTimeout: options.expert?.apiTimeout !== undefined ? options.expert.apiTimeout : 30
     };
     
-    // Save the migrated configuration
-    try {
-      this.app.debug('Saving migrated configuration...');
-      await this.app.savePluginOptions(options, () => {
-        this.app.debug('Configuration successfully migrated and saved');
-      });
-    } catch (err) {
-      this.app.debug('Failed to save migrated configuration:', err.message);
-      // Continue anyway - the migration will work in memory
+    // Validate that boatApiKey is set
+    if (!this.options.boatApiKey || this.options.boatApiKey.trim() === '') {
+      const errorMsg = 'No boat API key configured. Please set your API key in plugin settings (Mandatory Settings > Boat API key). You can find your API key at noforeignland.com under Account > Settings > Boat tracking > API Key.';
+      this.app.debug(errorMsg);
+      this.setPluginError(errorMsg);
+      this.stop();
+      return;
     }
-  }
-
-  // Flatten the nested structure for easier access and apply defaults
-  this.options = {
-    // Mandatory defaults
-    boatApiKey: options.mandatory?.boatApiKey,
     
-    // Advanced defaults
-    minMove: options.advanced?.minMove !== undefined ? options.advanced.minMove : 80,
-    minSpeed: options.advanced?.minSpeed !== undefined ? options.advanced.minSpeed : 1.5,
-    sendWhileMoving: options.advanced?.sendWhileMoving !== undefined ? options.advanced.sendWhileMoving : true,
-    ping_api_every_24h: options.advanced?.ping_api_every_24h !== undefined ? options.advanced.ping_api_every_24h : true,
+    // Resolve track directory path
+    if (!path.isAbsolute(this.options.trackDir)) {
+      const dataDirPath = this.app.getDataDirPath();
+      this.options.trackDir = path.join(dataDirPath, this.options.trackDir);
+    }
+
+    if (!this.createDir(this.options.trackDir)) {
+      this.stop();
+      return;
+    }
+
+    // Migrate old track files
+    await this.migrateOldTrackFile();
+
+    this.app.debug('track logger started, now logging to', this.options.trackDir);
+    this.setPluginStatus(`Started${needsSave ? ' (config migrated)' : ''}`);
+    this.upSince = new Date().getTime();
+
+    // Adjust default CRON if unchanged
+    if (!this.options.apiCron || this.options.apiCron === '*/10 * * * *') {
+      const startMinute = Math.floor(Math.random() * 10);
+      const startSecond = Math.floor(Math.random() * 60);
+      this.options.apiCron = `${startSecond} ${startMinute}/10 * * * *`;
+    }
+
+    this.app.debug('Setting CRON to', this.options.apiCron);
+    this.app.debug('trackFrequency is set to', this.options.trackFrequency, 'seconds');
+
+    // Subscribe and start logging
+    this.doLogging();
+
+    // Start cron job
+    this.cron = new CronJob(this.options.apiCron, this.interval.bind(this));
+    this.cron.start();
     
-    // Expert defaults
-    filterSource: options.expert?.filterSource,
-    trackDir: options.expert?.trackDir || defaultTracksDir,
-    keepFiles: options.expert?.keepFiles !== undefined ? options.expert.keepFiles : false,
-    trackFrequency: options.expert?.trackFrequency !== undefined ? options.expert.trackFrequency : 60,
-    internetTestTimeout: options.expert?.internetTestTimeout !== undefined ? options.expert.internetTestTimeout : 2000,
-    apiCron: options.expert?.apiCron || '*/10 * * * *',
-    apiTimeout: options.expert?.apiTimeout !== undefined ? options.expert.apiTimeout : 30
-  };
-  
-  // Validate that boatApiKey is set
-  if (!this.options.boatApiKey || this.options.boatApiKey.trim() === '') {
-    const errorMsg = 'No boat API key configured. Please set your API key in plugin settings (Mandatory Settings > Boat API key). You can find your API key at noforeignland.com under Account > Settings > Boat tracking > API Key.';
-    this.app.debug(errorMsg);
-    this.app.setPluginError(errorMsg);
-    this.stop();
-    return;
-  }
-  
-  // NEW: Resolve track directory path
-  if (!path.isAbsolute(this.options.trackDir)) {
-    // If relative path, store in SignalK's data directory, not in plugin directory
-    const signalkDataDir = this.app.config.configPath || path.join(require('os').homedir(), '.signalk');
-    this.options.trackDir = path.join(signalkDataDir, this.options.trackDir);
+    // Start position health check
+    this.startPositionHealthCheck();
   }
 
-  if (!this.createDir(this.options.trackDir)) {
-    this.stop();
-    return;
-  }
-
-  // NEW: Migrate old track file to new naming scheme on startup
-  await this.migrateOldTrackFile();
-
-  this.app.debug('track logger started, now logging to', this.options.trackDir);
-  this.app.setPluginStatus(`Started${needsSave ? ' (config migrated)' : ''}`);
-  this.upSince = new Date().getTime();
-
-  // adjust default CRON if unchanged
-  if (!this.options.apiCron || this.options.apiCron === '*/10 * * * *') {
-    const startMinute = Math.floor(Math.random() * 10);
-    const startSecond = Math.floor(Math.random() * 60);
-    this.options.apiCron = `${startSecond} ${startMinute}/10 * * * *`;
-  }
-
-  this.app.debug('Setting CRON to ', this.options.apiCron);
-  this.app.debug('trackFrequency is set to', this.options.trackFrequency, 'seconds');
-
-  // subscribe and logging
-  this.doLogging();
-
-  // start cron job
-  this.cron = new CronJob(this.options.apiCron, this.interval.bind(this));
-  this.cron.start();
-  
-  // Start position health check (every 5 minutes)
-  this.startPositionHealthCheck();
-}
-
-  // NEW: Migrate old track file naming to new scheme
   async migrateOldTrackFile() {
     const oldTrackFile = path.join(this.options.trackDir, 'nfl-track.jsonl');
+    const oldPendingFile = path.join(this.options.trackDir, 'nfl-track-pending.jsonl');
+    const oldSentFile = path.join(this.options.trackDir, 'nfl-track-sent.jsonl');
     const newPendingFile = path.join(this.options.trackDir, routeSaveName);
+    const newSentFile = path.join(this.options.trackDir, routeSentName);
     
     try {
-      // Check if old file exists and new pending file doesn't
+      // Migrate old track file
       if (await fs.pathExists(oldTrackFile) && !(await fs.pathExists(newPendingFile))) {
         this.app.debug('Migrating old track file to new naming scheme...');
         await fs.move(oldTrackFile, newPendingFile);
         this.app.debug('Successfully migrated old track file to:', routeSaveName);
       }
       
-      // NEW: Also check old plugin directory location and migrate if found
+      // Migrate old pending file
+      if (await fs.pathExists(oldPendingFile) && !(await fs.pathExists(newPendingFile))) {
+        this.app.debug('Migrating old pending file to new naming scheme...');
+        await fs.move(oldPendingFile, newPendingFile);
+        this.app.debug('Successfully migrated old pending file to:', routeSaveName);
+      }
+      
+      // Migrate old sent file
+      if (await fs.pathExists(oldSentFile) && !(await fs.pathExists(newSentFile))) {
+        this.app.debug('Migrating old sent file to new naming scheme...');
+        await fs.move(oldSentFile, newSentFile);
+        this.app.debug('Successfully migrated old sent file to:', routeSentName);
+      }
+      
+      // Check old plugin directory location
       const oldPluginTrackDir = path.join(__dirname, 'track');
       if (await fs.pathExists(oldPluginTrackDir)) {
         this.app.debug('Found old track directory in plugin folder, migrating to new location...');
         
-        // Migrate old pending file
-        const oldPluginPending = path.join(oldPluginTrackDir, 'nfl-track.jsonl');
-        const oldPluginNewPending = path.join(oldPluginTrackDir, routeSaveName);
+        const oldFiles = [
+          'nfl-track.jsonl',
+          'nfl-track-pending.jsonl',
+          routeSaveName
+        ];
         
-        if (await fs.pathExists(oldPluginPending) && !(await fs.pathExists(newPendingFile))) {
-          await fs.move(oldPluginPending, newPendingFile);
-          this.app.debug('Migrated pending track file from old plugin location');
-        } else if (await fs.pathExists(oldPluginNewPending) && !(await fs.pathExists(newPendingFile))) {
-          await fs.move(oldPluginNewPending, newPendingFile);
-          this.app.debug('Migrated pending track file from old plugin location');
+        for (const oldFile of oldFiles) {
+          const oldPath = path.join(oldPluginTrackDir, oldFile);
+          if (await fs.pathExists(oldPath) && !(await fs.pathExists(newPendingFile))) {
+            await fs.move(oldPath, newPendingFile);
+            this.app.debug('Migrated pending track file from old plugin location');
+            break;
+          }
         }
         
-        // Migrate sent archive if it exists
-        const oldPluginSent = path.join(oldPluginTrackDir, routeSentName);
-        const newSentFile = path.join(this.options.trackDir, routeSentName);
-        if (await fs.pathExists(oldPluginSent) && !(await fs.pathExists(newSentFile))) {
-          await fs.move(oldPluginSent, newSentFile);
-          this.app.debug('Migrated sent track archive from old plugin location');
+        // Migrate sent archive
+        const oldSentFiles = [routeSentName, 'nfl-track-sent.jsonl'];
+        for (const oldFile of oldSentFiles) {
+          const oldPath = path.join(oldPluginTrackDir, oldFile);
+          if (await fs.pathExists(oldPath) && !(await fs.pathExists(newSentFile))) {
+            await fs.move(oldPath, newSentFile);
+            this.app.debug('Migrated sent track archive from old plugin location');
+            break;
+          }
         }
         
-        // Try to remove old directory if it's now empty
+        // Try to remove old directory if empty
         try {
           const remainingFiles = await fs.readdir(oldPluginTrackDir);
           if (remainingFiles.length === 0) {
@@ -308,20 +375,19 @@ getSchema() {
             this.app.debug('Removed empty old track directory');
           }
         } catch (err) {
-          // Non-fatal, just leave it
           this.app.debug('Could not remove old track directory:', err.message);
         }
       }
     } catch (err) {
       this.app.debug('Error during track file migration:', err.message);
-      // Non-fatal error, continue startup
     }
   }
 
   stop() {
     this.app.debug('plugin stopped');
     
-    // Stop position health check
+    this.autoSelectedSource = null;
+    
     if (this.positionCheckInterval) {
       clearInterval(this.positionCheckInterval);
       this.positionCheckInterval = null;
@@ -331,6 +397,7 @@ getSchema() {
       this.cron.stop();
       this.cron = undefined;
     }
+    
     this.unsubscribesControl.forEach(f => f());
     this.unsubscribesControl = [];
     this.unsubscribes.forEach(f => f());
@@ -339,7 +406,6 @@ getSchema() {
   }
 
   doLogging() {
-    // subscribe for position
     let shouldDoLog = true;
 
     this.app.subscriptionmanager.subscribe({
@@ -352,10 +418,10 @@ getSchema() {
       }]
     }, this.unsubscribes, (subscriptionError) => {
       this.app.debug('Error subscription to data:' + subscriptionError);
-      this.app.setPluginError('Error subscription to data:' + subscriptionError.message);
+      this.setPluginError('Error subscription to data:' + subscriptionError.message);
     }, this.doOnValue.bind(this, () => shouldDoLog, newShould => { shouldDoLog = newShould; }));
 
-    // subscribe for speed
+    // Subscribe for speed
     if (this.options.minSpeed) {
       this.app.subscriptionmanager.subscribe({
         context: 'vessels.self',
@@ -366,7 +432,7 @@ getSchema() {
         }]
       }, this.unsubscribes, (subscriptionError) => {
         this.app.debug('Error subscription to data:' + subscriptionError);
-        this.app.setPluginError('Error subscription to data:' + subscriptionError.message);
+        this.setPluginError('Error subscription to data:' + subscriptionError.message);
       }, (delta) => {
         delta.updates.forEach(update => {
           if (this.options.filterSource && update.$source !== this.options.filterSource) {
@@ -384,91 +450,128 @@ getSchema() {
     }
   }
 
+  // FIXED: Use continue instead of return to handle multiple updates properly
   async doOnValue(getShouldDoLog, setShouldDoLog, delta) {
-  for (const update of delta.updates) {
-    if (this.options.filterSource && update.$source !== this.options.filterSource) {
-      return;
-    }
-    const timestamp = update.timestamp;
-    for (const value of update.values) {
-      // Validierung: GPS nahe (0,0)
-      if (Math.abs(value.value.latitude) <= 0.01 && Math.abs(value.value.longitude) <= 0.01) {
-        this.app.debug('GPS coordinates near (0,0), ignoring point to avoid invalid data logging.');
-        return;
+    for (const update of delta.updates) {
+      // Auto-select source logic
+      if (!this.options.filterSource) {
+        const timeSinceLastPosition = this.lastPositionReceived 
+          ? (new Date().getTime() - this.lastPositionReceived) / 1000 
+          : null;
+        
+        if (!this.autoSelectedSource) {
+          this.autoSelectedSource = update.$source;
+          this.lastPositionReceived = new Date().getTime();
+          this.app.debug(`Auto-selected GPS source: '${this.autoSelectedSource}'`);
+        } else if (update.$source !== this.autoSelectedSource) {
+          if (timeSinceLastPosition && timeSinceLastPosition > 300) {
+            this.app.debug(`Switching from stale source '${this.autoSelectedSource}' to '${update.$source}' (no data for ${timeSinceLastPosition.toFixed(0)}s)`);
+            this.autoSelectedSource = update.$source;
+            this.lastPositionReceived = new Date().getTime();
+          } else {
+            this.app.debug(`Ignoring position from '${update.$source}', using auto-selected source '${this.autoSelectedSource}'`);
+            continue;
+          }
+        } else {
+          this.lastPositionReceived = new Date().getTime();
+        }
+      } else if (update.$source !== this.options.filterSource) {
+        this.app.debug(`Ignoring position from '${update.$source}', filterSource is set to '${this.options.filterSource}'`);
+        continue;
+      } else {
+        this.lastPositionReceived = new Date().getTime();
       }
       
-      // Validate for valid lat/lon
-      if (!this.isValidLatitude(value.value.latitude) || !this.isValidLongitude(value.value.longitude)) {
-        this.app.debug('got invalid position, ignoring...', value.value);
-        return;
-      }
-
-      // 24h-Ping Check: Setze Flag, aber breche NICHT ab
-      let force24hSave = false;
-      if (this.options.ping_api_every_24h && this.lastPosition) {
-        const timeSinceLastPoint = (new Date().getTime() - this.lastPosition.currentTime);
-        if (timeSinceLastPoint >= 24 * 60 * 60 * 1000) {
-          this.app.debug('24h since last point, forcing save of point to keep boat active on NFL');
-          force24hSave = true;
-        }
-      }
-
-      // Wenn wir nicht loggen sollen UND es kein 24h-Force ist, dann raus
-      if (!force24hSave && !getShouldDoLog()) {
-        return;
-      }
-
-      // Wenn wir eine letzte Position haben, prüfe Timestamp und Distanz
-      if (this.lastPosition && !force24hSave) {
-        // Timestamp-Validierung
-        if (new Date(this.lastPosition.timestamp).getTime() > new Date(timestamp).getTime()) {
-          this.app.debug('got error in timestamp:', timestamp, 'is earlier than previous:', this.lastPosition.timestamp);
-          return;
+      const timestamp = update.timestamp;
+      for (const value of update.values) {
+        // Validation: GPS near (0,0)
+        if (Math.abs(value.value.latitude) <= 0.01 && Math.abs(value.value.longitude) <= 0.01) {
+          this.app.debug('GPS coordinates near (0,0), ignoring point to avoid invalid data logging.');
+          continue;
         }
         
-        // Distance-Check (nur wenn NICHT 24h-Force)
-        const distance = this.equirectangularDistance(this.lastPosition.pos, value.value);
-        if (this.options.minMove && distance < this.options.minMove) {
-          this.app.debug('Distance', distance.toFixed(2), 'm is less than minMove', this.options.minMove, 'm - skipping');
-          return;
+        // Validate lat/lon
+        if (!this.isValidLatitude(value.value.latitude) || !this.isValidLongitude(value.value.longitude)) {
+          this.app.debug('got invalid position, ignoring...', value.value);
+          continue;
+        }
+
+        // 24h ping check
+        let force24hSave = false;
+        if (this.options.ping_api_every_24h && this.lastPosition) {
+          const timeSinceLastPoint = (new Date().getTime() - this.lastPosition.currentTime);
+          if (timeSinceLastPoint >= 24 * 60 * 60 * 1000) {
+            this.app.debug('24h since last point, forcing save of point to keep boat active on NFL');
+            force24hSave = true;
+          }
+        }
+
+        // Check if we should log
+        if (!force24hSave && !getShouldDoLog()) {
+          this.app.debug('shouldDoLog is false, not logging position');
+          continue;
+        }
+
+        // Check timestamp and distance
+        if (this.lastPosition && !force24hSave) {
+          if (new Date(this.lastPosition.timestamp).getTime() > new Date(timestamp).getTime()) {
+            this.app.debug('got error in timestamp:', timestamp, 'is earlier than previous:', this.lastPosition.timestamp);
+            continue;
+          }
+          
+          const distance = this.equirectangularDistance(this.lastPosition.pos, value.value);
+          if (this.options.minMove && distance < this.options.minMove) {
+            this.app.debug('Distance', distance.toFixed(2), 'm is less than minMove', this.options.minMove, 'm - skipping');
+            continue;
+          }
+          
+          this.app.debug('Distance', distance.toFixed(2), 'm is greater than minMove', this.options.minMove, 'm - logging');
+        }
+
+        // Save point
+        this.app.debug('Saving position from source:', update.$source, 'lat:', value.value.latitude, 'lon:', value.value.longitude);
+        this.lastPosition = { pos: value.value, timestamp, currentTime: new Date().getTime() };
+        await this.savePoint(this.lastPosition);
+
+        // Reset shouldDoLog if minSpeed is active
+        if (this.options.minSpeed) {
+          this.app.debug('options.minSpeed - setting shouldDoLog to false');
+          setShouldDoLog(false);
         }
       }
-
-      // Punkt speichern
-      this.lastPosition = { pos: value.value, timestamp, currentTime: new Date().getTime() };
-      this.lastPositionReceived = new Date().getTime(); // Track for health check
-      await this.savePoint(this.lastPosition);
-
-      // shouldDoLog zurücksetzen wenn minSpeed aktiv ist
-      if (this.options.minSpeed) {
-        this.app.debug('options.minSpeed - setting shouldDoLog to false');
-        setShouldDoLog(false);
-      }
     }
-  }}
+  }
 
-
- async savePoint(point) {
-  const obj = {
-    lat: point.pos.latitude,
-    lon: point.pos.longitude,
-    t: point.timestamp
-  };
-  this.app.debug(`save data point:`, obj);
-  // CHANGED: Save to pending file
-  await fs.appendFile(path.join(this.options.trackDir, routeSaveName), JSON.stringify(obj) + EOL);
+  async savePoint(point) {
+    const obj = {
+      lat: point.pos.latitude,
+      lon: point.pos.longitude,
+      t: point.timestamp
+    };
+    this.app.debug(`save data point:`, obj);
+    await fs.appendFile(path.join(this.options.trackDir, routeSaveName), JSON.stringify(obj) + EOL);
   
-  const lastSaveTime = new Date().toISOString();
-  const lastTransferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'None since start';
-  this.app.setPluginStatus(`Last save: ${lastSaveTime} | Last transfer: ${lastTransferTime}`);
+    const now = new Date();
+    this.emitDelta('plugin.signalk-to-noforeignland.savepoint', now.toISOString());
+    this.emitDelta('plugin.signalk-to-noforeignland.savepoint_local', now.toLocaleString());
+    
+    // ISO8601 format for Dashboard
+    const activeSource = this.options.filterSource || this.autoSelectedSource || '';
+    const sourcePrefix = activeSource ? `${activeSource} | ` : '';
+    const saveTime = now.toISOString();
+    const transferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'None since start';
+  
+    this.setPluginStatus(`${sourcePrefix}Save: ${saveTime} | Transfer: ${transferTime}`);
   }
 
   isValidLatitude(obj) {
     return this.isDefinedNumber(obj) && obj > -90 && obj < 90;
   }
+  
   isValidLongitude(obj) {
     return this.isDefinedNumber(obj) && obj > -180 && obj < 180;
   }
+  
   isDefinedNumber(obj) {
     return (obj !== undefined && obj !== null && typeof obj === 'number');
   }
@@ -492,7 +595,7 @@ getSchema() {
         fs.accessSync(dir, fs.constants.R_OK | fs.constants.W_OK);
       } catch (error) {
         this.app.debug('[createDir]', error.message);
-        this.app.setPluginError(`No rights to directory ${dir}`);
+        this.setPluginError(`No rights to directory ${dir}`);
         res = false;
       }
     } else {
@@ -502,18 +605,18 @@ getSchema() {
         switch (error.code) {
           case 'EACCES':
           case 'EPERM':
-            this.app.debug(`False to create ${dir} by Permission denied`);
-            this.app.setPluginError(`False to create ${dir} by Permission denied`);
+            this.app.debug(`Failed to create ${dir} by Permission denied`);
+            this.setPluginError(`Failed to create ${dir} by Permission denied`);
             res = false;
             break;
           case 'ETIMEDOUT':
-            this.app.debug(`False to create ${dir} by Operation timed out`);
-            this.app.setPluginError(`False to create ${dir} by Operation timed out`);
+            this.app.debug(`Failed to create ${dir} by Operation timed out`);
+            this.setPluginError(`Failed to create ${dir} by Operation timed out`);
             res = false;
             break;
           default:
             this.app.debug(`Error creating directory ${dir}: ${error.message}`);
-            this.app.setPluginError(`Error creating directory ${dir}: ${error.message}`);
+            this.setPluginError(`Error creating directory ${dir}: ${error.message}`);
             res = false;
         }
       }
@@ -521,58 +624,52 @@ getSchema() {
     return res;
   }
 
-  // NEW: Position health check
-  startPositionHealthCheck() {
-    // Check every 5 minutes if we're receiving position data
-    this.positionCheckInterval = setInterval(() => {
-      const now = new Date().getTime();
-      const timeSinceLastPosition = this.lastPositionReceived 
-        ? (now - this.lastPositionReceived) / 1000 
-        : null;
-      
-      // Build appropriate error message based on filterSource setting
-      const filterMsg = this.options.filterSource 
-        ? ` from source '${this.options.filterSource}'` 
-        : '';
-      
-      if (!this.lastPositionReceived) {
-        // Never received any position data
-        const errorMsg = this.options.filterSource
-          ? `No GPS position data received from filtered source '${this.options.filterSource}'. Check Expert Settings > Position source device, or leave empty to use any GPS source.`
-          : 'No GPS position data received. Check that your GPS is connected and SignalK is receiving navigation.position data.';
-        this.app.setPluginError(errorMsg);
-        this.app.debug('Position health check: No position data ever received' + filterMsg);
-      } else if (timeSinceLastPosition > 300) {
-        // No position data for more than 5 minutes
-        const errorMsg = this.options.filterSource
-          ? `No GPS position data${filterMsg} for ${Math.floor(timeSinceLastPosition / 60)} minutes. Check that source '${this.options.filterSource}' is active, or change/clear Position source device in Expert Settings.`
-          : `No GPS position data for ${Math.floor(timeSinceLastPosition / 60)} minutes. Check your GPS connection.`;
-        this.app.setPluginError(errorMsg);
-        this.app.debug(`Position health check: No position for ${timeSinceLastPosition.toFixed(0)} seconds` + filterMsg);
-      } else {
-        // Position data is flowing normally
-        this.app.debug(`Position health check: OK (last position ${timeSinceLastPosition.toFixed(0)} seconds ago${filterMsg})`);
-        // Clear any previous error if position is now flowing
-        const lastSaveTime = this.lastPosition ? new Date(this.lastPosition.currentTime).toISOString() : 'Never';
-        const lastTransferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'None since start';
-        const sourceInfo = this.options.filterSource ? ` (source: ${this.options.filterSource})` : '';
-        this.app.setPluginStatus(`Active${sourceInfo} - Last save: ${lastSaveTime} | Last transfer: ${lastTransferTime}`);
-      }
-    }, 5 * 60 * 1000); // Check every 5 minutes
+startPositionHealthCheck() {
+  this.positionCheckInterval = setInterval(() => {
+    const now = new Date().getTime();
+    const timeSinceLastPosition = this.lastPositionReceived 
+      ? (now - this.lastPositionReceived) / 1000 
+      : null;
     
-    // Also do an initial check after 2 minutes
-    setTimeout(() => {
-      if (!this.lastPositionReceived) {
-        const errorMsg = this.options.filterSource
-          ? `No GPS position data received after 2 minutes from filtered source '${this.options.filterSource}'. Check Expert Settings > Position source device. You may need to leave it empty to use any available GPS source.`
-          : 'No GPS position data received after 2 minutes. Check that your GPS is connected and SignalK is receiving navigation.position data.';
-        this.app.setPluginError(errorMsg);
-        this.app.debug('Initial position check: No position data received' + (this.options.filterSource ? ` from source '${this.options.filterSource}'` : ''));
-      }
-    }, 2 * 60 * 1000);
-  }
+    const activeSource = this.options.filterSource || this.autoSelectedSource || 'any';
+    const filterMsg = activeSource !== 'any' ? ` from source '${activeSource}'` : '';
+    
+    if (!this.lastPositionReceived) {
+      const errorMsg = this.options.filterSource
+        ? `No GPS position data received from filtered source '${this.options.filterSource}'. Check Expert Settings > Position source device, or leave empty to use any GPS source.`
+        : 'No GPS position data received. Check that your GPS is connected and SignalK is receiving navigation.position data.';
+      this.setPluginError(errorMsg);
+      this.app.debug('Position health check: No position data ever received' + filterMsg);
+    } else if (timeSinceLastPosition > 300) {
+      const errorMsg = this.options.filterSource
+        ? `No GPS position data${filterMsg} for ${Math.floor(timeSinceLastPosition / 60)} minutes. Check that source '${this.options.filterSource}' is active, or change/clear Position source device in Expert Settings.`
+        : `No GPS position data${filterMsg} for ${Math.floor(timeSinceLastPosition / 60)} minutes. Check your GPS connection.`;
+      this.setPluginError(errorMsg);
+      this.app.debug(`Position health check: No position for ${timeSinceLastPosition.toFixed(0)} seconds` + filterMsg);
+    } else {
+      this.app.debug(`Position health check: OK (last position ${timeSinceLastPosition.toFixed(0)} seconds ago${filterMsg})`);
+      
+      // ISO8601 format for Dashboard
+      const sourcePrefix = activeSource !== 'any' ? `${activeSource} | ` : '';
+      const saveTime = this.lastPosition ? new Date(this.lastPosition.currentTime).toISOString() : 'None since start';
+      const transferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'None since start';
+      this.setPluginStatus(`${sourcePrefix}Save: ${saveTime} | Transfer: ${transferTime}`);
+    }
+  }, 5 * 60 * 1000);
+  
+  // Initial check after 2 minutes of startup
+  setTimeout(() => {
+    if (!this.lastPositionReceived) {
+      const activeSource = this.options.filterSource || this.autoSelectedSource || 'any';
+      const errorMsg = this.options.filterSource
+        ? `No GPS position data received after 2 minutes from filtered source '${this.options.filterSource}'. Check Expert Settings > Position source device. You may need to leave it empty to use any available GPS source.`
+        : 'No GPS position data received after 2 minutes. Check that your GPS is connected and SignalK is receiving navigation.position data.';
+      this.setPluginError(errorMsg);
+      this.app.debug('Initial position check: No position data received' + (activeSource !== 'any' ? ` from source '${activeSource}'` : ''));
+    }
+  }, 2 * 60 * 1000);
+}
 
-  // periodic interval called by cron
   async interval() {
     if ((this.checkBoatMoving()) && await this.checkTrack() && await this.testInternet()) {
       await this.sendData();
@@ -581,58 +678,53 @@ getSchema() {
 
   checkBoatMoving() { 
     if (!this.options.trackFrequency) { 
-      return true; // Kein Tracking → immer senden 
+      return true;
     } 
     const time = this.lastPosition ? this.lastPosition.currentTime : this.upSince; 
     const secsSinceLastPoint = (new Date().getTime() - time) / 1000; 
     const isMoving = secsSinceLastPoint <= (this.options.trackFrequency * 2); 
     if (isMoving) { 
       this.app.debug('Boat is still moving, last move', secsSinceLastPoint, 'seconds ago'); 
-      return this.options.sendWhileMoving; // Nur senden wenn gewünscht 
+      return this.options.sendWhileMoving;
     } else { 
       this.app.debug('Boat stopped moving, last move at least', secsSinceLastPoint, 'seconds ago'); 
-      return true; // Immer senden wenn gestoppt 
-      } 
+      return true;
+    } 
   }
 
   async testInternet() {
-  const dns = require('dns').promises;
-  
-  this.app.debug('testing internet connection');
-  
-  const timeoutMs = this.options.internetTestTimeout || 2000;
-  
-  // Prüfe mehrere öffentliche DNS-Server
-  const dnsServers = [
-    { name: 'Google DNS', ip: '8.8.8.8' },
-    { name: 'Cloudflare DNS', ip: '1.1.1.1' }
-  ];
-  
-  for (const server of dnsServers) {
-    try {
-      // Versuche, den DNS-Server direkt zu erreichen
-      // Wir machen einen reverse lookup auf die IP selbst
-      const result = await Promise.race([
-        dns.reverse(server.ip),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('DNS timeout')), timeoutMs)
-        )
-      ]);
-      
-      this.app.debug(`internet connection = true, ${server.name} (${server.ip}) is reachable`);
-      return true;
-    } catch (err) {
-      this.app.debug(`${server.name} (${server.ip}) not reachable:`, err.message);
-      // Weiter zum nächsten Server
+    const dns = require('dns').promises;
+    
+    this.app.debug('testing internet connection');
+    
+    const timeoutMs = this.options.internetTestTimeout || 2000;
+    
+    const dnsServers = [
+      { name: 'Google DNS', ip: '8.8.8.8' },
+      { name: 'Cloudflare DNS', ip: '1.1.1.1' }
+    ];
+    
+    for (const server of dnsServers) {
+      try {
+        const result = await Promise.race([
+          dns.reverse(server.ip),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('DNS timeout')), timeoutMs)
+          )
+        ]);
+        
+        this.app.debug(`internet connection = true, ${server.name} (${server.ip}) is reachable`);
+        return true;
+      } catch (err) {
+        this.app.debug(`${server.name} (${server.ip}) not reachable:`, err.message);
+      }
     }
+    
+    this.app.debug('internet connection = false, no public DNS servers reachable');
+    return false;
   }
-  
-  this.app.debug('internet connection = false, no public DNS servers reachable');
-  return false;
-}
 
   async checkTrack() {
-    // CHANGED: Check pending file instead
     const trackFile = path.join(this.options.trackDir, routeSaveName);
     this.app.debug('checking the track', trackFile, 'if should send');
     const exists = await fs.pathExists(trackFile);
@@ -646,18 +738,17 @@ getSchema() {
       await this.sendApiData();
     } else {
       this.app.debug('Failed to send track - no boat API key set in plugin settings.');
-      this.app.setPluginError(`Failed to send track - no boat API key set in plugin settings.`);
+      this.setPluginError(`Failed to send track - no boat API key set in plugin settings.`);
     }
   }
 
   async sendApiData() {
     this.app.debug('sending the data');
-    // CHANGED: Read from pending file
     const pendingFile = path.join(this.options.trackDir, routeSaveName);
     const trackData = await this.createTrack(pendingFile);
     if (!trackData) {
       this.app.debug('Recorded track did not contain any valid track points, aborting sending.');
-      this.app.setPluginError(`Failed to send track - Recorded track did not contain any valid track points, aborting sending.`);
+      this.setPluginError(`Failed to send track - Recorded track did not contain any valid track points, aborting sending.`);
       return;
     }
     this.app.debug('created track data with timestamp:', new Date(trackData.timestamp));
@@ -668,16 +759,14 @@ getSchema() {
     const headers = { 'X-NFL-API-Key': pluginApiKey };
     this.app.debug('sending track to API');
 
-    // Retry-Logik mit exponentiell steigendem Timeout
     const maxRetries = 3;
-    const baseTimeout = (this.options.apiTimeout || 30) * 1000; // Konfigurierbarer Basis-Timeout in ms
+    const baseTimeout = (this.options.apiTimeout || 30) * 1000;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const currentTimeout = baseTimeout * attempt; // 30s, 60s, 90s
+        const currentTimeout = baseTimeout * attempt;
         this.app.debug(`Attempt ${attempt}/${maxRetries} with ${currentTimeout}ms timeout`);
         
-        // AbortController für Timeout
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), currentTimeout);
         
@@ -694,38 +783,42 @@ getSchema() {
           const responseBody = await response.json();
           if (responseBody.status === 'ok') {
             this.lastSuccessfulTransfer = new Date();
-            this.app.debug('Track successfully sent to API');
-            this.app.setPluginStatus(`Started - last Track sent successfully at ${new Date().toISOString()}`);
             
-            // CHANGED: New file handling logic
+            this.emitDelta('plugin.signalk-to-noforeignland.sent_to_api', this.lastSuccessfulTransfer.toISOString());
+            this.emitDelta('plugin.signalk-to-noforeignland.sent_to_api_local', this.lastSuccessfulTransfer.toLocaleString());
+            
+            this.app.debug('Track successfully sent to API');
+            
+            // ISO8601 format for Dashboard
+            const activeSource = this.options.filterSource || this.autoSelectedSource || '';
+            const sourcePrefix = activeSource ? `${activeSource} | ` : '';
+            const saveTime = this.lastPosition ? new Date(this.lastPosition.currentTime).toISOString() : 'None since start';
+            const transferTime = this.lastSuccessfulTransfer.toISOString();
+            this.setPluginStatus(`${sourcePrefix}Save: ${saveTime} | Transfer: ${transferTime}`);
+            
             await this.handleSuccessfulSend(pendingFile);
-            return; // Erfolg - beende Funktion
+            return;
           } else {
             this.app.debug('Could not send track to API, returned response json:', responseBody);
-            // Bei API-Fehler nicht erneut versuchen
-            this.app.setPluginError(`Failed to send track - API returned error.`);
+            this.setPluginError(`Failed to send track - API returned error.`);
             return;
           }
         } else {
           this.app.debug('Could not send track to API, returned response code:', response.status, response.statusText);
-          // Bei 4xx Fehler nicht erneut versuchen
           if (response.status >= 400 && response.status < 500) {
-            this.app.setPluginError(`Failed to send track - HTTP ${response.status}.`);
+            this.setPluginError(`Failed to send track - HTTP ${response.status}.`);
             return;
           }
-          // Bei 5xx Fehler retry
           throw new Error(`HTTP ${response.status}`);
         }
       } catch (err) {
         this.app.debug(`Attempt ${attempt} failed:`, err.message);
         
-        // Bei letztem Versuch Fehler setzen
         if (attempt === maxRetries) {
           this.app.debug('Could not send track to API after', maxRetries, 'attempts:', err);
-          this.app.setPluginError(`Failed to send track after ${maxRetries} attempts - check logs for details.`);
+          this.setPluginError(`Failed to send track after ${maxRetries} attempts - check logs for details.`);
         } else {
-          // Kurze Pause vor nächstem Versuch
-          const waitTime = 2000 * attempt; // 2s, 4s
+          const waitTime = 2000 * attempt;
           this.app.debug(`Waiting ${waitTime}ms before retry...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
         }
@@ -733,35 +826,25 @@ getSchema() {
     }
   }
 
-  // NEW: Handle file operations after successful send
   async handleSuccessfulSend(pendingFile) {
     const sentFile = path.join(this.options.trackDir, routeSentName);
     
     try {
       if (this.options.keepFiles) {
-        // Append pending data to sent archive
         this.app.debug('Appending sent data to archive file:', routeSentName);
-        
-        // Read pending file content
         const pendingContent = await fs.readFile(pendingFile, 'utf8');
-        
-        // Append to sent file (create if doesn't exist)
         await fs.appendFile(sentFile, pendingContent);
-        
         this.app.debug('Successfully archived sent track data');
       } else {
         this.app.debug('keepFiles disabled, will delete pending file');
       }
       
-      // Always delete the pending file after successful send
       this.app.debug('Deleting pending track file');
       await fs.remove(pendingFile);
       this.app.debug('Successfully processed track files after send');
       
     } catch (err) {
       this.app.debug('Error handling files after successful send:', err.message);
-      // Non-fatal: Data was sent successfully, file handling is secondary
-      // Next save will create a new pending file anyway
     }
   }
 
@@ -781,7 +864,7 @@ getSchema() {
           }
         } catch (error) {
           this.app.debug('could not parse line from track file:', line);
-          this.app.setPluginError(`Failed could not parse line from track file - check logs for details.`);
+          this.setPluginError(`Failed could not parse line from track file - check logs for details.`);
         }
       }
     }

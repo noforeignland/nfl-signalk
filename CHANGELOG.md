@@ -1,3 +1,13 @@
+0.1.28
+* BUGFIX: No GPS data found - introduced in 0.1.27 - Thanks Piotr
+
+0.1.28-beta.2
+* EXPERIMENTAL: Signal K data path to visualize the plugin behaviour or error in Node Red, KIP, etc. Using plugin.signalk-to-noforeignland.* for now. See README.md for details.
+* CHANGE: Using app.getDataDirPath() to store transient data, thanks Jeremy, they are now in "plugin-config-data/signalk-to-noforeignland/nfl-track" and renamed to pending.json1 and sent.json1
+* CHANGE: Optimize GPS detection if multiple navigation.position from different sources exist.
+* CHANGE: PluginStatus optimized for limited space available.
+* CHANGE: doc/beta_install.md changed for new file structure.
+
 0.1.28-beta.1
 * CHANGE: By design SK deletes the track folder upon Pluging update via the Appstore, so we have to save the long term track in a different location, default folder: signalk-to-noforeignland-data
 

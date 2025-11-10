@@ -24,3 +24,12 @@ Effortlessly log your boat's movement to **noforeignland.com**
 1. Add your boat's API Key into the Server > Plugin Config > Signal K to Noforeignland > Boat API Key
 2. Hit "Submit"
 3. Restart the Signal K server 
+
+## Data Pathes Created (EXPERIMENTAL! - Subject to change!)
+plugin.signalk-to-noforeignland.savepoint - ISO8601 timestamp - when was last point saved to trackfile
+plugin.signalk-to-noforeignland.savepoint_local - locale timestamp - when was last point saved to trackfile
+plugin.signalk-to-noforeignland.sent_to_api - ISO8601 timestamp - last successful transfer to the API
+plugin.signalk-to-noforeignland.sent_to_api_local - locale timestamp - last successful transfer to the API
+plugin.signalk-to-noforeignland.status - String - Status & Error messages
+plugin.signalk-to-noforeignland.status_boolean - boolean - 0 = normal operation, 1 = error
+notifications.plugin.signalk-to-noforeignland.status_boolean - json object - auto created

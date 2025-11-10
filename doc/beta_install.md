@@ -18,8 +18,7 @@ cp -a .signalk/node_modules/signalk-to-noforeignland/* nfl-backup/
 
 ```
 cd ~/.signalk/node_modules/signalk-to-noforeignland/
-rm *
-#NOTE: Trackdir will not be deleted, this is what we want.
+rm -rf *
 wget  https://github.com/noforeignland/nfl-signalk/archive/refs/heads/main.zip
 unzip main.zip
 cp -r nfl-signalk-main/* .
@@ -47,8 +46,7 @@ cp -a /data/conf/signalk/node_modules/signalk-to-noforeignland/*  nfl-backup
 
 ```
 cd /data/conf/signalk/node_modules/signalk-to-noforeignland/
-rm *
-# NOTE: Trackdir will not be deleted, this is what we want.
+rm -rf *
 wget  https://github.com/noforeignland/nfl-signalk/archive/refs/heads/main.zip
 unzip main.zip
 cp -r nfl-signalk-main/* .
