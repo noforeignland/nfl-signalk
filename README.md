@@ -1,17 +1,21 @@
-# Signal K To NFL
+# Signal K To Noforeignland
 Effortlessly log your boat's movement to **noforeignland.com**
 
 ## Features
-* Automatically log your position to NFL
+* Automatically log your position to noforeignland.com
 * Send detailed tracks to log your entire trip and not just your final position
-* Can be used in near real time or cache and upload when stopped and data-connection is available.
-* Can sent a 24h keepalive, when off the boat for a while.
+* Can be used in near real time or cache and upload when stopped and data-connection is available
+* Sends 24h keepalive
+* Option to archive your track on the local disk
+* Detailed plugin information in the SK dashboard 
+* SK data paths about the plugin status for your own dashboard or Node Red coding
 
 ## Issues
+* Server -> Plugin Config -> Signal K to Noforeignland -> Enable debug log (top right)
 * Report issues on GitHub (https://github.com/noforeignland/nfl-signalk/issues)
 
 ## Requirements
-* An internet connection is required in order to update NFL.
+* An internet connection is required in order to update noforeignland.com
 * A navigation.position data path inside Signal K for self, which is your current GPS position
 * A **noforeignland.com** account
 * Your Boat API Key from the **noforeignland.com** website: 
@@ -25,11 +29,14 @@ Effortlessly log your boat's movement to **noforeignland.com**
 2. Hit "Submit"
 3. Restart the Signal K server 
 
-## Data Pathes Created (EXPERIMENTAL! - Subject to change!)
-plugin.signalk-to-noforeignland.savepoint - ISO8601 timestamp - when was last point saved to trackfile
-plugin.signalk-to-noforeignland.savepoint_local - locale timestamp - when was last point saved to trackfile
-plugin.signalk-to-noforeignland.sent_to_api - ISO8601 timestamp - last successful transfer to the API
-plugin.signalk-to-noforeignland.sent_to_api_local - locale timestamp - last successful transfer to the API
-plugin.signalk-to-noforeignland.status - String - Status & Error messages
-plugin.signalk-to-noforeignland.status_boolean - boolean - 0 = normal operation, 1 = error
-notifications.plugin.signalk-to-noforeignland.status_boolean - json object - auto created
+## Data paths created by this plugin
+```
+noforeignland.savepoint                    - ISO8601 timestamp - when was last point saved to trackfile
+noforeignland.savepoint_local              - locale timestamp  - when was last point saved to trackfile
+noforeignland.sent_to_api                  - ISO8601 timestamp - last successful transfer to the API
+noforeignland.sent_to_api_local            - locale timestamp  - last successful transfer to the API
+noforeignland.status                       - string            - Status & Error messages
+noforeignland.status_boolean               - number            - 0 = normal operation, 1 = error
+noforeignland.source - string              - string            - data source of navigation.position
+notifications.noforeignland.status_boolean - json object       - auto created
+```

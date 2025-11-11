@@ -60,15 +60,17 @@ class SignalkToNoforeignland {
     // SHORT format for data path
     if (!hasError) {
       const activeSource = this.options.filterSource || this.autoSelectedSource || '';
-      const sourcePrefix = activeSource ? `${activeSource} | ` : '';
+      //const sourcePrefix = activeSource ? `${activeSource} | ` : '';
       const saveTime = this.lastPosition ? new Date(this.lastPosition.currentTime).toLocaleTimeString() : 'None since start';
       const transferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toLocaleTimeString() : 'None since start';
-      const shortStatus = `${sourcePrefix}Save: ${saveTime} | Transfer: ${transferTime}`;
-      this.emitDelta('plugin.signalk-to-noforeignland.status', shortStatus);
+      // was const shortStatus = `${sourcePrefix}Save: ${saveTime} | Transfer: ${transferTime}`;
+      const shortStatus = `Save: ${saveTime} | Transfer: ${transferTime}`;
+      this.emitDelta('noforeignland.status', shortStatus);
+      this.emitDelta('noforeignland.source', activeSource);
     } else {
-      this.emitDelta('plugin.signalk-to-noforeignland.status', `ERROR: ${this.currentError}`);
+      this.emitDelta('noforeignland.status', `ERROR: ${this.currentError}`);
     }
-    this.emitDelta('plugin.signalk-to-noforeignland.status_boolean', hasError ? 1 : 0);
+    this.emitDelta('noforeignland.status_boolean', hasError ? 1 : 0);
   }
 
   // Override setPluginStatus to also emit data path
@@ -552,8 +554,8 @@ class SignalkToNoforeignland {
     await fs.appendFile(path.join(this.options.trackDir, routeSaveName), JSON.stringify(obj) + EOL);
   
     const now = new Date();
-    this.emitDelta('plugin.signalk-to-noforeignland.savepoint', now.toISOString());
-    this.emitDelta('plugin.signalk-to-noforeignland.savepoint_local', now.toLocaleString());
+    this.emitDelta('noforeignland.savepoint', now.toISOString());
+    this.emitDelta('noforeignland.savepoint_local', now.toLocaleString());
     
     // ISO8601 format for Dashboard
     const activeSource = this.options.filterSource || this.autoSelectedSource || '';
@@ -653,7 +655,7 @@ startPositionHealthCheck() {
       const sourcePrefix = activeSource !== 'any' ? `${activeSource} | ` : '';
       const saveTime = this.lastPosition ? new Date(this.lastPosition.currentTime).toISOString() : 'None since start';
       const transferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'None since start';
-      this.setPluginStatus(`${sourcePrefix}Save: ${saveTime} | Transfer: ${transferTime}`);
+      this.setPluginStatus(`Save: ${saveTime} | Transfer: ${transferTime} | ${sourcePrefix}`);
     }
   }, 5 * 60 * 1000);
   
@@ -784,8 +786,8 @@ startPositionHealthCheck() {
           if (responseBody.status === 'ok') {
             this.lastSuccessfulTransfer = new Date();
             
-            this.emitDelta('plugin.signalk-to-noforeignland.sent_to_api', this.lastSuccessfulTransfer.toISOString());
-            this.emitDelta('plugin.signalk-to-noforeignland.sent_to_api_local', this.lastSuccessfulTransfer.toLocaleString());
+            this.emitDelta('noforeignland.sent_to_api', this.lastSuccessfulTransfer.toISOString());
+            this.emitDelta('noforeignland.sent_to_api_local', this.lastSuccessfulTransfer.toLocaleString());
             
             this.app.debug('Track successfully sent to API');
             
