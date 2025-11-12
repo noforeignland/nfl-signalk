@@ -1,3 +1,6 @@
+0.1.29-beta.2 
+* NEW: setPluginError and error in data path if Internet Connection is not working. 
+
 0.1.29-beta.1
 * CHANGE: After talking to Treppo from Sugnal K core team we should use the data path "noforeignland.*", code and docs changed.
 * CHANGE: README.md info added and format optimized

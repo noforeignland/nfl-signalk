@@ -60,10 +60,8 @@ class SignalkToNoforeignland {
     // SHORT format for data path
     if (!hasError) {
       const activeSource = this.options.filterSource || this.autoSelectedSource || '';
-      //const sourcePrefix = activeSource ? `${activeSource} | ` : '';
       const saveTime = this.lastPosition ? new Date(this.lastPosition.currentTime).toLocaleTimeString() : 'None since start';
       const transferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toLocaleTimeString() : 'None since start';
-      // was const shortStatus = `${sourcePrefix}Save: ${saveTime} | Transfer: ${transferTime}`;
       const shortStatus = `Save: ${saveTime} | Transfer: ${transferTime}`;
       this.emitDelta('noforeignland.status', shortStatus);
       this.emitDelta('noforeignland.source', activeSource);
@@ -651,11 +649,14 @@ startPositionHealthCheck() {
     } else {
       this.app.debug(`Position health check: OK (last position ${timeSinceLastPosition.toFixed(0)} seconds ago${filterMsg})`);
       
-      // ISO8601 format for Dashboard
-      const sourcePrefix = activeSource !== 'any' ? `${activeSource} | ` : '';
-      const saveTime = this.lastPosition ? new Date(this.lastPosition.currentTime).toISOString() : 'None since start';
-      const transferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'None since start';
-      this.setPluginStatus(`Save: ${saveTime} | Transfer: ${transferTime} | ${sourcePrefix}`);
+      // Clear any previous errors when position health is OK
+      if (this.currentError) {
+        const activeSource = this.options.filterSource || this.autoSelectedSource || '';
+        const sourcePrefix = activeSource ? `${activeSource} | ` : '';
+        const saveTime = this.lastPosition ? new Date(this.lastPosition.currentTime).toISOString() : 'None since start';
+        const transferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'None since start';
+        this.setPluginStatus(`${sourcePrefix}Save: ${saveTime} | Transfer: ${transferTime}`);
+      }
     }
   }, 5 * 60 * 1000);
   
@@ -673,9 +674,25 @@ startPositionHealthCheck() {
 }
 
   async interval() {
-    if ((this.checkBoatMoving()) && await this.checkTrack() && await this.testInternet()) {
-      await this.sendData();
+    const boatMoving = this.checkBoatMoving();
+    if (!boatMoving) {
+      return;
     }
+    
+    const hasTrack = await this.checkTrack();
+    if (!hasTrack) {
+      return;
+    }
+    
+    const hasInternet = await this.testInternet();
+    if (!hasInternet) {
+      const errorMsg = 'No internet connection detected. Unable to send tracking data to NFL. DNS lookups failed - check your internet connection.';
+      this.app.debug(errorMsg);
+      this.setPluginError(errorMsg);
+      return;
+    }
+    
+    await this.sendData();
   }
 
   checkBoatMoving() { 
@@ -700,6 +717,7 @@ startPositionHealthCheck() {
     this.app.debug('testing internet connection');
     
     const timeoutMs = this.options.internetTestTimeout || 2000;
+    this.app.debug(`Using internet test timeout: ${timeoutMs}ms`);
     
     const dnsServers = [
       { name: 'Google DNS', ip: '8.8.8.8' },
@@ -708,21 +726,23 @@ startPositionHealthCheck() {
     
     for (const server of dnsServers) {
       try {
+        const startTime = Date.now();
         const result = await Promise.race([
           dns.reverse(server.ip),
           new Promise((_, reject) => 
             setTimeout(() => reject(new Error('DNS timeout')), timeoutMs)
           )
         ]);
+        const elapsed = Date.now() - startTime;
         
-        this.app.debug(`internet connection = true, ${server.name} (${server.ip}) is reachable`);
+        this.app.debug(`internet connection = true, ${server.name} (${server.ip}) is reachable (took ${elapsed}ms)`);
         return true;
       } catch (err) {
         this.app.debug(`${server.name} (${server.ip}) not reachable:`, err.message);
       }
     }
     
-    this.app.debug('internet connection = false, no public DNS servers reachable');
+    this.app.debug(`internet connection = false, no public DNS servers reachable (timeout was ${timeoutMs}ms)`);
     return false;
   }
 
