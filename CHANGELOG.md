@@ -1,3 +1,6 @@
+0.1.30
+* CHANGE: Deployment via OIDC authentication
+
 0.1.29
 * CHANGE: Removed unused dependency "is-reachable" in package.json
 
