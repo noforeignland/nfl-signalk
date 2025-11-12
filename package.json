@@ -1,6 +1,6 @@
 {
   "name": "signalk-to-noforeignland",
-  "version": "0.1.29-beta.2",
+  "version": "0.1.29",
   "description": "SignalK track logger to noforeignland.com",
   "main": "index.js",
   "keywords": [
@@ -26,7 +26,6 @@
   "dependencies": {
     "cron": "^2.1.0",
     "fs-extra": "^10.1.0",
-    "is-reachable": "^5.2.1",
     "node-fetch": "^2.6.7"
   }
 }

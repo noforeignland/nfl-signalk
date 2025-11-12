@@ -1,3 +1,6 @@
+0.1.29
+* CHANGE: Removed unused dependency "is-reachable" in package.json
+
 0.1.29-beta.2 
 * NEW: setPluginError and error in data path if Internet Connection is not working. 
 
