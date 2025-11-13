@@ -1,6 +1,6 @@
 {
   "name": "signalk-to-noforeignland",
-  "version": "0.1.33",
+  "version": "0.1.31",
   "description": "SignalK track logger to noforeignland.com",
   "main": "index.js",
   "keywords": [
@@ -15,7 +15,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/noforeignland/nfl-signalk.git"
+    "url": "git+https://github.com/noforeignland/nfl-signalk.git"
   },
   "engines": {
     "node": ">=18.0.0"

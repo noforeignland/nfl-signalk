@@ -1,3 +1,6 @@
+0.1.34
+* CHANGE: Fix repository URL format
+
 0.1.33
 * CHANGE: Deployment via OIDC authentication 
 
