@@ -1,3 +1,6 @@
+0.1.33
+* CHANGE: Deployment via OIDC authentication 
+
 0.1.32
 * CHANGE: Deployment via OIDC authentication 
 

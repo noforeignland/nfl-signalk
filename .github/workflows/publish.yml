@@ -24,7 +24,7 @@ jobs:
 
       # 3️⃣ Install dependencies
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       # 4️⃣ Run tests if present
       - name: Run tests
