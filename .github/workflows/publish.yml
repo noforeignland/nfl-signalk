@@ -3,33 +3,33 @@ name: Publish Package
 on:
   push:
     tags:
-      - 'v*'  # Only tags like v0.1.30 trigger the publish
+      - 'v*'  # version tags e.g. v0.1.41
 
 permissions:
-  id-token: write      # For OIDC
+  id-token: write      # REQUIRED for OIDC
   contents: read
+  packages: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+
     steps:
-      # 1️⃣ Checkout Code
+      # 1. Checkout code
       - uses: actions/checkout@v4
 
-      # 2️⃣ Node.js Setup
+      # 2. Setup Node.js and enable OIDC auth
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
+          always-auth: true
 
-      # 3️⃣ Install dependencies
-      - name: Install dependencies
-        run: npm install
+      # 3. Install deps
+      - run: npm ci
 
-      # 4️⃣ Run tests if present
-      - name: Run tests
-        run: npm test
+      # 4. Run tests (optional)
+      - run: npm test
 
-      # 5️⃣ Publish to NPM using OIDC
-      - name: Publish to NPM
-        run: npm publish --access public
+      # 5. Publish via OIDC (NO token, NO login!)
+      - run: npm publish --access public --provenance
