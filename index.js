@@ -561,7 +561,7 @@ class SignalkToNoforeignland {
     const saveTime = now.toISOString();
     const transferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'None since start';
   
-    this.setPluginStatus(`${sourcePrefix}Save: ${saveTime} | Transfer: ${transferTime}`);
+    this.setPluginStatus(`Save: ${saveTime} | Transfer: ${transferTime} | ${sourcePrefix}`);
   }
 
   isValidLatitude(obj) {
@@ -655,7 +655,7 @@ startPositionHealthCheck() {
         const sourcePrefix = activeSource ? `${activeSource} | ` : '';
         const saveTime = this.lastPosition ? new Date(this.lastPosition.currentTime).toISOString() : 'None since start';
         const transferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'None since start';
-        this.setPluginStatus(`${sourcePrefix}Save: ${saveTime} | Transfer: ${transferTime}`);
+        this.setPluginStatus(`Save: ${saveTime} | Transfer: ${transferTime} | ${sourcePrefix}`);
       }
     }
   }, 5 * 60 * 1000);
@@ -816,7 +816,7 @@ startPositionHealthCheck() {
             const sourcePrefix = activeSource ? `${activeSource} | ` : '';
             const saveTime = this.lastPosition ? new Date(this.lastPosition.currentTime).toISOString() : 'None since start';
             const transferTime = this.lastSuccessfulTransfer.toISOString();
-            this.setPluginStatus(`${sourcePrefix}Save: ${saveTime} | Transfer: ${transferTime}`);
+            this.setPluginStatus(`Save: ${saveTime} | Transfer: ${transferTime} | ${sourcePrefix}`);
             
             await this.handleSuccessfulSend(pendingFile);
             return;
