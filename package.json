@@ -1,6 +1,6 @@
 {
   "name": "@noforeignland/signalk-to-noforeignland",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "SignalK track logger to noforeignland.com",
   "main": "index.js",
   "keywords": [
