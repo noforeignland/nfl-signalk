@@ -1,29 +1,16 @@
-0.2.2
+1.0.0
+* CHANGE: Package now released unter npmjs org noforeignland in version 1.0.0 due to deployment changes in npmjs and the need of trustworthy sources. All npmjs keys will be revoked Nov 19th, 2025. 
+Users of the old (depricated) 0.1.x versions need to install this new package once manually using the Signal K Appstore. The Plugin Configuration will be kept from the 0.1.x install. 
+
+0.2.x
 * CHANGE: Deployment via OIDC authentication 
+npmjs.org is revoking all deployment keys Nov 19th. The future deployment shall be via trusted publishers, so the workflow changes from publishing local -> npmjs to local -> github -> npmjs.
+To fullfil this we had to deprecate the old package and deploy it under the scope of the org noforeignland in npmjs. This is the reason, why you don't see the old package anymore in the Appstore.
 
-0.2.1
-* CHANGE: Deployment via OIDC authentication 
+The "new" one has to be installed once manually, after that everything is back to normal and you are fine.
 
-0.2.0
-* CHANGE: Deployment via OIDC authentication 
-
-0.1.35
-* CHANGE: Deployment via OIDC authentication 
-
-0.1.34
-* CHANGE: Fix repository URL format
-
-0.1.33
-* CHANGE: Deployment via OIDC authentication 
-
-0.1.32
-* CHANGE: Deployment via OIDC authentication 
-
-0.1.31
-* CHANGE: Deployment via OIDC authentication 
-
-0.1.30
-* CHANGE: Deployment via OIDC authentication
+0.1.3x
+* CHANGE: Working on Deployment via OIDC authentication 
 
 0.1.29
 * CHANGE: Removed unused dependency "is-reachable" in package.json
