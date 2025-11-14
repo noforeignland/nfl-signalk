@@ -25,6 +25,7 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
+          scope: '@noforeignland'
           always-auth: true
 
       - run: npm install
@@ -32,4 +33,4 @@ jobs:
       - run: npm test
 
       - name: Publish
-        run: npm publish --provenance
+        run: npm publish --provenance --access public
