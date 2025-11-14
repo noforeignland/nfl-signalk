@@ -1,3 +1,6 @@
+1.0.1
+* CHANGE: Cleanup previous installs and migrate plugin config.
+
 1.0.0
 * CHANGE: Package now released unter npmjs org noforeignland in version 1.0.0 due to deployment changes in npmjs and the need of trustworthy sources. All npmjs keys will be revoked Nov 19th, 2025. 
 Users of the old (depricated) 0.1.x versions need to install this new package once manually using the Signal K Appstore. The Plugin Configuration will be kept from the 0.1.x install. 

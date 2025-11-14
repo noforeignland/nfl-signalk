@@ -1,6 +1,9 @@
 {
   "name": "@noforeignland/signalk-to-noforeignland",
-  "version": "1.0.0",
+  "signalk": {
+    "id": "@noforeignland/signalk-to-noforeignland"
+  },
+  "version": "1.0.1",
   "description": "SignalK track logger to noforeignland.com",
   "main": "index.js",
   "keywords": [
@@ -21,7 +24,8 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "echo \"No tests specified\" && exit 0"
+    "test": "echo \"No tests specified\" && exit 0",
+    "postinstall": "node migrate-config.js && (npm uninstall signalk-to-noforeignland 2>/dev/null || rm -rf ../signalk-to-noforeignland || true)"
   },
   "dependencies": {
     "cron": "^2.1.0",
