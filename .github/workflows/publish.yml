@@ -32,4 +32,9 @@ jobs:
       - run: npm test
 
       - name: Publish
-        run: npm publish --provenance --access public
+      run:
+          if [[ "${{ github.ref }}" == refs/tags/*-beta.* ]] || [[ "${{ github.ref }}" == refs/tags/*-rc.* ]]; then
+            npm publish --provenance --access public --tag beta
+          else
+            npm publish --provenance --access public
+          fi
