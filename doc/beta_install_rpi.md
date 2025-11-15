@@ -7,7 +7,7 @@ It is recommended to enable the Debug Log for this plugin in Server -> Plugin Co
 
 # Backup old data
 ```
-cd -a ~/.signalk ~/signalk-backup
+cp -a ~/.signalk ~/signalk-backup
 ```
 
 # npmjs beta on RPI
