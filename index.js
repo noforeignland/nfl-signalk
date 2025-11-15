@@ -279,6 +279,9 @@ class SignalkToNoforeignland {
       return;
     }
 
+    // NEW: Cleanup old plugin
+    await this.cleanupOldPlugin();
+
     // Migrate old track files
     await this.migrateOldTrackFile();
 
@@ -306,6 +309,53 @@ class SignalkToNoforeignland {
     // Start position health check
     this.startPositionHealthCheck();
   }
+
+async cleanupOldPlugin() {
+  try {
+    // 1. Config Migration
+    const configDir = process.env.SIGNALK_NODE_CONFIG_DIR || 
+                      path.join(process.env.HOME || process.env.USERPROFILE, '.signalk');
+    const configPath = path.join(configDir, 'plugin-config-data');
+    const oldConfigFile = path.join(configPath, 'signalk-to-noforeignland.json');
+    const newConfigFile = path.join(configPath, '@noforeignland-signalk-to-noforeignland.json');
+    
+    if (fs.existsSync(oldConfigFile) && !fs.existsSync(newConfigFile)) {
+      this.app.debug('Migrating configuration from old plugin...');
+      fs.copyFileSync(oldConfigFile, newConfigFile);
+      fs.copyFileSync(oldConfigFile, `${oldConfigFile}.backup`);
+      this.app.debug('✓ Configuration migrated successfully');
+    }
+    
+    // 2. Check if old plugin still exists
+    const oldPluginDir = path.join(configDir, 'node_modules', 'signalk-to-noforeignland');
+    
+    if (fs.existsSync(oldPluginDir)) {
+      this.app.debug('Old plugin "signalk-to-noforeignland" detected');
+      this.app.setPluginError(
+        'Old plugin "signalk-to-noforeignland" is still installed. ' +
+        'Please uninstall it manually: cd ~/.signalk && npm uninstall signalk-to-noforeignland'
+      );
+      
+      // Try to remove it after a delay (non-blocking)
+      setTimeout(async () => {
+        try {
+          this.app.debug('Attempting to remove old plugin directory...');
+          await fs.remove(oldPluginDir);
+          this.app.debug('✓ Old plugin directory removed');
+          // Clear error if removal successful
+          this.setPluginStatus('Started (old plugin cleaned up)');
+        } catch (err) {
+          this.app.debug('Could not automatically remove old plugin:', err.message);
+          this.app.debug('Please manually run: npm uninstall signalk-to-noforeignland');
+        }
+      }, 5000); // 5 Sekunden warten bis SignalK vollständig gestartet ist
+    }
+    
+  } catch (err) {
+    this.app.debug('Error during old plugin cleanup:', err.message);
+  }
+}
+
 
   async migrateOldTrackFile() {
     const oldTrackFile = path.join(this.options.trackDir, 'nfl-track.jsonl');

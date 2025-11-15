@@ -1,0 +1,13 @@
+cd ~/dirk/nfl-signalk
+
+# Aktuelle Version zu Beta machen
+npm version 1.0.1-beta.1 --no-git-tag-version
+
+# Package bauen
+npm pack
+
+# Mit beta tag publishen (nicht als 'latest')
+npm publish --tag beta
+
+# Falls du noch nicht eingeloggt bist:
+npm login
