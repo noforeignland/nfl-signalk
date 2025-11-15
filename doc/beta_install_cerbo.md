@@ -55,9 +55,8 @@ cd /data/conf/signalk
 
 npm i @noforeignland/signalk-to-noforeignland@beta
 
-or specific:
-npm i @noforeignland/signalk-to-noforeignland@1.0.1-beta.5
 ```
+
 2. Restart Server & Check logs
 ```
 Restart Server vom Webgui and check logs in Webgui
@@ -69,9 +68,7 @@ Restart Server vom Webgui and check logs in Webgui
 ```
 cd /data/conf/signalk
 
-npm i @noforeignland/signalk-to-noforeignland@beta
-
-or specific:
+# Here use the beta version you want to install
 npm i @noforeignland/signalk-to-noforeignland@1.0.1-beta.5
 ```
 2. Restart Server & Check logs
@@ -90,13 +87,17 @@ Restart Server vom Webgui and check logs in Webgui
 2. Get new files from repo (main for latest)
 
 ```
-cd /data/conf/signalk/node_modules/signalk-to-noforeignland/
-rm -rf *
+cd ~
+mkdir dev
+cd dev
 wget  https://github.com/noforeignland/nfl-signalk/archive/refs/heads/main.zip
 unzip main.zip
-cp -r nfl-signalk-main/* .
-rm main.zip
-rm -rf nfl-signalk-main/
+cd nfl-signalk-main/
+npm pack
+
+cd /data/conf/signalk
+npm install ~/dev/nfl-signalk-main/<your_npm_pack.tgz>
+
 ```
 
 3. Restart Server & Check logs
