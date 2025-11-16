@@ -279,8 +279,10 @@ class SignalkToNoforeignland {
       return;
     }
 
-    // NEW: Cleanup old plugin
-    await this.cleanupOldPlugin();
+    // Cleanup old plugin (fire and forget, non-blocking)
+    this.cleanupOldPlugin().catch(err => {
+      this.app.debug('Error in cleanupOldPlugin:', err.message);
+    });
 
     // Migrate old track files
     await this.migrateOldTrackFile();
@@ -310,52 +312,77 @@ class SignalkToNoforeignland {
     this.startPositionHealthCheck();
   }
 
-async cleanupOldPlugin() {
-  try {
-    // 1. Config Migration
-    const configDir = process.env.SIGNALK_NODE_CONFIG_DIR || 
-                      path.join(process.env.HOME || process.env.USERPROFILE, '.signalk');
-    const configPath = path.join(configDir, 'plugin-config-data');
-    const oldConfigFile = path.join(configPath, 'signalk-to-noforeignland.json');
-    const newConfigFile = path.join(configPath, '@noforeignland-signalk-to-noforeignland.json');
-    
-    if (fs.existsSync(oldConfigFile) && !fs.existsSync(newConfigFile)) {
-      this.app.debug('Migrating configuration from old plugin...');
-      fs.copyFileSync(oldConfigFile, newConfigFile);
-      fs.copyFileSync(oldConfigFile, `${oldConfigFile}.backup`);
-      this.app.debug('✓ Configuration migrated successfully');
-    }
-    
-    // 2. Check if old plugin still exists
-    const oldPluginDir = path.join(configDir, 'node_modules', 'signalk-to-noforeignland');
-    
-    if (fs.existsSync(oldPluginDir)) {
-      this.app.debug('Old plugin "signalk-to-noforeignland" detected');
-      this.app.setPluginError(
-        'Old plugin "signalk-to-noforeignland" is still installed. ' +
-        'Please uninstall it manually: cd ~/.signalk && npm uninstall signalk-to-noforeignland'
-      );
+  async cleanupOldPlugin() {
+    try {
+      // Detect SignalK directory (standard or Victron Cerbo)
+      const victronPath = '/data/conf/signalk';
+      const standardPath = process.env.SIGNALK_NODE_CONFIG_DIR || 
+                           path.join(process.env.HOME || process.env.USERPROFILE, '.signalk');
       
-      // Try to remove it after a delay (non-blocking)
-      setTimeout(async () => {
-        try {
-          this.app.debug('Attempting to remove old plugin directory...');
-          await fs.remove(oldPluginDir);
-          this.app.debug('✓ Old plugin directory removed');
-          // Clear error if removal successful
-          this.setPluginStatus('Started (old plugin cleaned up)');
-        } catch (err) {
-          this.app.debug('Could not automatically remove old plugin:', err.message);
-          this.app.debug('Please manually run: npm uninstall signalk-to-noforeignland');
-        }
-      }, 5000); // 5 Sekunden warten bis SignalK vollständig gestartet ist
+      const configDir = fs.existsSync(victronPath) ? victronPath : standardPath;
+      this.app.debug(`Using SignalK directory: ${configDir}`);
+      
+      const configPath = path.join(configDir, 'plugin-config-data');
+      
+      // 1. Config Migration - only from signalk-to-noforeignland
+      const oldConfigFile = path.join(configPath, 'signalk-to-noforeignland.json');
+      const newConfigFile = path.join(configPath, '@noforeignland-signalk-to-noforeignland.json');
+      
+      if (fs.existsSync(oldConfigFile) && !fs.existsSync(newConfigFile)) {
+        this.app.debug('Migrating configuration from old plugin "signalk-to-noforeignland"...');
+        fs.copyFileSync(oldConfigFile, newConfigFile);
+        fs.copyFileSync(oldConfigFile, `${oldConfigFile}.backup`);
+        this.app.debug('✓ Configuration migrated successfully');
+      }
+      
+      // 2. Check if old plugins still exist (including very old signalk-to-nfl)
+      const oldPlugins = [
+        { dir: path.join(configDir, 'node_modules', 'signalk-to-noforeignland'), name: 'signalk-to-noforeignland' },
+        { dir: path.join(configDir, 'node_modules', 'signalk-to-nfl'), name: 'signalk-to-nfl' }
+      ];
+      
+      const foundOldPlugins = oldPlugins.filter(plugin => fs.existsSync(plugin.dir));
+      
+      if (foundOldPlugins.length > 0) {
+        const pluginNames = foundOldPlugins.map(p => `"${p.name}"`).join(' and ');
+        const uninstallCmd = foundOldPlugins.map(p => p.name).join(' ');
+        
+        this.app.debug(`Old plugin(s) detected: ${pluginNames}`);
+        this.app.setPluginError(
+          `Old plugin(s) ${pluginNames} still installed. ` +
+          `Please uninstall manually: cd ${configDir} && npm uninstall ${uninstallCmd}`
+        );
+        
+        // Try to remove them after a delay (non-blocking)
+        setTimeout(async () => {
+          let anyRemoved = false;
+          let anyFailed = false;
+          
+          for (const plugin of foundOldPlugins) {
+            try {
+              this.app.debug(`Attempting to remove old plugin directory: ${plugin.name}...`);
+              await fs.remove(plugin.dir);
+              this.app.debug(`✓ Old plugin "${plugin.name}" directory removed`);
+              anyRemoved = true;
+            } catch (err) {
+              this.app.debug(`Could not automatically remove old plugin "${plugin.name}":`, err.message);
+              anyFailed = true;
+            }
+          }
+          
+          if (anyRemoved && !anyFailed) {
+            this.setPluginStatus('Started (old plugins cleaned up)');
+          } else if (anyFailed) {
+            const remainingPlugins = foundOldPlugins.map(p => p.name).join(' ');
+            this.app.debug(`Please manually run: cd ${configDir} && npm uninstall ${remainingPlugins}`);
+          }
+        }, 5000); // 5 seconds wait for SignalK to fully start
+      }
+      
+    } catch (err) {
+      this.app.debug('Error during old plugin cleanup:', err.message);
     }
-    
-  } catch (err) {
-    this.app.debug('Error during old plugin cleanup:', err.message);
   }
-}
-
 
   async migrateOldTrackFile() {
     const oldTrackFile = path.join(this.options.trackDir, 'nfl-track.jsonl');
@@ -674,54 +701,54 @@ async cleanupOldPlugin() {
     return res;
   }
 
-startPositionHealthCheck() {
-  this.positionCheckInterval = setInterval(() => {
-    const now = new Date().getTime();
-    const timeSinceLastPosition = this.lastPositionReceived 
-      ? (now - this.lastPositionReceived) / 1000 
-      : null;
-    
-    const activeSource = this.options.filterSource || this.autoSelectedSource || 'any';
-    const filterMsg = activeSource !== 'any' ? ` from source '${activeSource}'` : '';
-    
-    if (!this.lastPositionReceived) {
-      const errorMsg = this.options.filterSource
-        ? `No GPS position data received from filtered source '${this.options.filterSource}'. Check Expert Settings > Position source device, or leave empty to use any GPS source.`
-        : 'No GPS position data received. Check that your GPS is connected and SignalK is receiving navigation.position data.';
-      this.setPluginError(errorMsg);
-      this.app.debug('Position health check: No position data ever received' + filterMsg);
-    } else if (timeSinceLastPosition > 300) {
-      const errorMsg = this.options.filterSource
-        ? `No GPS position data${filterMsg} for ${Math.floor(timeSinceLastPosition / 60)} minutes. Check that source '${this.options.filterSource}' is active, or change/clear Position source device in Expert Settings.`
-        : `No GPS position data${filterMsg} for ${Math.floor(timeSinceLastPosition / 60)} minutes. Check your GPS connection.`;
-      this.setPluginError(errorMsg);
-      this.app.debug(`Position health check: No position for ${timeSinceLastPosition.toFixed(0)} seconds` + filterMsg);
-    } else {
-      this.app.debug(`Position health check: OK (last position ${timeSinceLastPosition.toFixed(0)} seconds ago${filterMsg})`);
+  startPositionHealthCheck() {
+    this.positionCheckInterval = setInterval(() => {
+      const now = new Date().getTime();
+      const timeSinceLastPosition = this.lastPositionReceived 
+        ? (now - this.lastPositionReceived) / 1000 
+        : null;
       
-      // Clear any previous errors when position health is OK
-      if (this.currentError) {
-        const activeSource = this.options.filterSource || this.autoSelectedSource || '';
-        const sourcePrefix = activeSource ? `${activeSource} | ` : '';
-        const saveTime = this.lastPosition ? new Date(this.lastPosition.currentTime).toISOString() : 'None since start';
-        const transferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'None since start';
-        this.setPluginStatus(`Save: ${saveTime} | Transfer: ${transferTime} | ${sourcePrefix}`);
-      }
-    }
-  }, 5 * 60 * 1000);
-  
-  // Initial check after 2 minutes of startup
-  setTimeout(() => {
-    if (!this.lastPositionReceived) {
       const activeSource = this.options.filterSource || this.autoSelectedSource || 'any';
-      const errorMsg = this.options.filterSource
-        ? `No GPS position data received after 2 minutes from filtered source '${this.options.filterSource}'. Check Expert Settings > Position source device. You may need to leave it empty to use any available GPS source.`
-        : 'No GPS position data received after 2 minutes. Check that your GPS is connected and SignalK is receiving navigation.position data.';
-      this.setPluginError(errorMsg);
-      this.app.debug('Initial position check: No position data received' + (activeSource !== 'any' ? ` from source '${activeSource}'` : ''));
-    }
-  }, 2 * 60 * 1000);
-}
+      const filterMsg = activeSource !== 'any' ? ` from source '${activeSource}'` : '';
+      
+      if (!this.lastPositionReceived) {
+        const errorMsg = this.options.filterSource
+          ? `No GPS position data received from filtered source '${this.options.filterSource}'. Check Expert Settings > Position source device, or leave empty to use any GPS source.`
+          : 'No GPS position data received. Check that your GPS is connected and SignalK is receiving navigation.position data.';
+        this.setPluginError(errorMsg);
+        this.app.debug('Position health check: No position data ever received' + filterMsg);
+      } else if (timeSinceLastPosition > 300) {
+        const errorMsg = this.options.filterSource
+          ? `No GPS position data${filterMsg} for ${Math.floor(timeSinceLastPosition / 60)} minutes. Check that source '${this.options.filterSource}' is active, or change/clear Position source device in Expert Settings.`
+          : `No GPS position data${filterMsg} for ${Math.floor(timeSinceLastPosition / 60)} minutes. Check your GPS connection.`;
+        this.setPluginError(errorMsg);
+        this.app.debug(`Position health check: No position for ${timeSinceLastPosition.toFixed(0)} seconds` + filterMsg);
+      } else {
+        this.app.debug(`Position health check: OK (last position ${timeSinceLastPosition.toFixed(0)} seconds ago${filterMsg})`);
+        
+        // Clear any previous errors when position health is OK
+        if (this.currentError) {
+          const activeSource = this.options.filterSource || this.autoSelectedSource || '';
+          const sourcePrefix = activeSource ? `${activeSource} | ` : '';
+          const saveTime = this.lastPosition ? new Date(this.lastPosition.currentTime).toISOString() : 'None since start';
+          const transferTime = this.lastSuccessfulTransfer ? this.lastSuccessfulTransfer.toISOString() : 'None since start';
+          this.setPluginStatus(`Save: ${saveTime} | Transfer: ${transferTime} | ${sourcePrefix}`);
+        }
+      }
+    }, 5 * 60 * 1000);
+    
+    // Initial check after 2 minutes of startup
+    setTimeout(() => {
+      if (!this.lastPositionReceived) {
+        const activeSource = this.options.filterSource || this.autoSelectedSource || 'any';
+        const errorMsg = this.options.filterSource
+          ? `No GPS position data received after 2 minutes from filtered source '${this.options.filterSource}'. Check Expert Settings > Position source device. You may need to leave it empty to use any available GPS source.`
+          : 'No GPS position data received after 2 minutes. Check that your GPS is connected and SignalK is receiving navigation.position data.';
+        this.setPluginError(errorMsg);
+        this.app.debug('Initial position check: No position data received' + (activeSource !== 'any' ? ` from source '${activeSource}'` : ''));
+      }
+    }, 2 * 60 * 1000);
+  }
 
   async interval() {
     const boatMoving = this.checkBoatMoving();

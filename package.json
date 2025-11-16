@@ -3,7 +3,7 @@
   "signalk": {
     "id": "@noforeignland/signalk-to-noforeignland"
   },
-  "version": "1.0.1-beta.6",
+  "version": "1.0.1-beta.7",
   "description": "SignalK track logger to noforeignland.com",
   "main": "index.js",
   "keywords": [
@@ -24,7 +24,8 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "echo \"No tests specified\" && exit 0"
+    "test": "echo \"No tests specified\" && exit 0",
+    "postinstall": "node cleanup-old-plugin.js"
   },
   "dependencies": {
     "cron": "^2.1.0",

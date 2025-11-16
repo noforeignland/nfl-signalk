@@ -1,5 +1,5 @@
 1.0.1
-* CHANGE: Cleanup previous installs and migrate plugin config.
+* CHANGE: Cleanup previous installs and migrate plugin config, removes depricated old plugins.
 
 1.0.0
 * CHANGE: Package now released unter npmjs org noforeignland in version 1.0.0 due to deployment changes in npmjs and the need of trustworthy sources. All npmjs keys will be revoked Nov 19th, 2025. 
