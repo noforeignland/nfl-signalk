@@ -2,8 +2,7 @@
 Effortlessly log your boat's movement to **noforeignland.com**
 
 ## Important for 0.1.x users
-Since 1.0.0 this package now released unter npmjs org noforeignland in version 1.0.0 due to deployment changes in npmjs and the need of trustworthy sources. All npmjs keys will be revoked Nov 19th, 2025. 
-Users of the old (depricated) 0.1.x versions need to install this new package once manually using the Signal K Appstore. The Plugin Configuration will be kept from the 0.1.x install. 
+Upgrade to >1.0.1 by installing this plugin from the Appstore ageain. Your old config will be migrated.
 
 ## Features
 * Automatically log your position to noforeignland.com
@@ -44,3 +43,11 @@ noforeignland.status_boolean               - number            - 0 = normal oper
 noforeignland.source - string              - string            - data source of navigation.position
 notifications.noforeignland.status_boolean - json object       - auto created
 ```
+
+https://github.com/noforeignland/nfl-signalk/issues
+
+# Virctron Cerbo GX Users
+
+## Limited storage
+Signal K can quickly exhaust the small onboard storage of the device, especially when a lot of logging is enabled. Vicron Energy addressed this here:
+https://www.victronenergy.com/live/venus-os:large#disk_space_issues_data_partition_full
