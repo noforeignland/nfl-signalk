@@ -217,7 +217,7 @@ class SignalkToNoforeignland {
           boatApiKey: options.boatApiKey
         },
         advanced: {
-          minMove: options.minMove !== undefined ? options.minMove : 50,
+          minMove: options.minMove !== undefined ? options.minMove : 80,
           minSpeed: options.minSpeed !== undefined ? options.minSpeed : 1.5,
           sendWhileMoving: options.sendWhileMoving !== undefined ? options.sendWhileMoving : true,
           ping_api_every_24h: options.ping_api_every_24h !== undefined ? options.ping_api_every_24h : true
