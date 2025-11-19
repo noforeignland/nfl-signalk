@@ -55,11 +55,14 @@ cd /data/conf/signalk
 
 npm i @noforeignland/signalk-to-noforeignland@beta
 
+# reset owner properly, else package belongs to root
+chown -R signalk:signalk /data/conf/signalk/*
+
 ```
 
 2. Restart Server & Check logs
 ```
-Restart Server vom Webgui and check logs in Webgui
+ svc -t /service/signalk-server
 ```
 
 
@@ -70,10 +73,14 @@ cd /data/conf/signalk
 
 # Here use the beta version you want to install
 npm i @noforeignland/signalk-to-noforeignland@1.0.1-beta.5
+
+# reset owner properly, else package belongs to root
+chown -R signalk:signalk /data/conf/signalk/*
+
 ```
 2. Restart Server & Check logs
 ```
-Restart Server vom Webgui and check logs in Webgui
+ svc -t /service/signalk-server
 ```
 
 
@@ -98,9 +105,12 @@ npm pack
 cd /data/conf/signalk
 npm install ~/dev/nfl-signalk-main/<your_npm_pack.tgz>
 
+# reset owner properly, else package belongs to root
+chown -R signalk:signalk /data/conf/signalk/*
+
 ```
 
 3. Restart Server & Check logs
 ```
-Restart Server vom Webgui and check logs in Webgui
+svc -t /service/signalk-server
 ```

@@ -88,10 +88,20 @@ class SignalkToNoforeignland {
         return;
       }
       
-      // 6. Cleanup old plugin versions (fire and forget)
-      this.pluginCleanup.cleanup().catch(err => {
-        this.app.debug('Error in cleanupOldPlugin:', err.message);
-      });
+      // 6. Cleanup old plugin versions (with callback handling)
+      this.pluginCleanup.cleanup()
+        .then((result) => {
+          if (result === 'all_removed') {
+            this.app.debug('Old plugins successfully cleaned up');
+            // Update status if plugin started successfully
+            if (this.options.boatApiKey) {
+              this.setPluginStatus('Started (old plugins cleaned up)');
+            }
+          }
+        })
+        .catch(err => {
+          this.app.debug('Error in cleanupOldPlugin:', err.message);
+        });
       
       // 7. Migrate old track files
       this.trackMigration = new TrackMigration(this.app, this.options.trackDir);
