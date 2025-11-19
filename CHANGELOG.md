@@ -1,3 +1,6 @@
+1.1.0
+* CHANGE: Refactored Project structure, see PROJECT_STRUCTURE.md
+
 1.0.1
 * CHANGE: Cleanup previous installs and migrate plugin config, removes depricated old plugins.
 
