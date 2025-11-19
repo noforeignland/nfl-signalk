@@ -2,7 +2,7 @@
 Effortlessly log your boat's movement to **noforeignland.com**
 
 ## Important for 0.1.x users
-Upgrade to >1.0.1 by installing this plugin from the Appstore ageain. Your old config will be migrated.
+Upgrade to >1.1.0 by installing this plugin from the Appstore again. Your old config will be migrated and old plugins will be automatically removed.
 
 ## Features
 * Automatically log your position to noforeignland.com
@@ -49,5 +49,8 @@ https://github.com/noforeignland/nfl-signalk/issues
 # Virctron Cerbo GX Users
 
 ## Limited storage
-Signal K can quickly exhaust the small onboard storage of the device, especially when a lot of logging is enabled. Vicron Energy addressed this here:
+Signal K can quickly exhaust the small onboard storage of the device, especially when a lot of logging is enabled and not properly configured. Even concider to not enable "Keep track files on disk" if you are moving a lot.
+
+Vicron Energy addressed this here:
 https://www.victronenergy.com/live/venus-os:large#disk_space_issues_data_partition_full
+
