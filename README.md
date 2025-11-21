@@ -19,7 +19,7 @@ Upgrade to >1.1.0 by installing this plugin from the Appstore again. Your old co
 
 ## Requirements
 * An internet connection is required in order to update noforeignland.com
-* A navigation.position data path inside Signal K for self, which is your current GPS position
+* A navigation.position data path inside Signal K for self, which is your current GNSS position
 * A **noforeignland.com** account
 * Your Boat API Key from the **noforeignland.com** website: 
   * Account > Settings > Boat tracking > API Key

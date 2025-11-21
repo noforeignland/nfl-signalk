@@ -54,3 +54,6 @@ package-lock.json
 
 # Claude Code
 .claude
+
+#npm packaged files
+*.tgz

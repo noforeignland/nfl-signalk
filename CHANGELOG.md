@@ -1,5 +1,6 @@
 1.1.0
 * CHANGE: Refactored Project structure, see PROJECT_STRUCTURE.md
+* CHANGE: Use phrase GNSS instead of GPS - Thanks Piotr
 
 1.0.1
 * CHANGE: Cleanup previous installs and migrate plugin config, removes depricated old plugins.
@@ -27,17 +28,17 @@ The "new" one has to be installed once manually, after that everything is back t
 0.1.29-beta.1
 * CHANGE: After talking to Treppo from Sugnal K core team we should use the data path "noforeignland.*", code and docs changed.
 * CHANGE: README.md info added and format optimized
-* CHANGE: GPS source at the end for setPluginStatus - Cerbo has a long source name and truncates it.
+* CHANGE: GNSS source at the end for setPluginStatus - Cerbo has a long source name and truncates it.
 * CHANGE: Use "npm install instead" of "npm ci" to push from Github to npmjs using OIDC authentication
 * CHANGE: Moved navigation.position source from path noforeignland.status to noforeignland.source
 
 0.1.28
-* BUGFIX: No GPS data found - introduced in 0.1.27 - Thanks Piotr
+* BUGFIX: No GNSS data found - introduced in 0.1.27 - Thanks Piotr
 
 0.1.28-beta.2
 * EXPERIMENTAL: Signal K data path to visualize the plugin behaviour or error in Node Red, KIP, etc. Using plugin.signalk-to-noforeignland.* for now. See README.md for details.
 * CHANGE: Using app.getDataDirPath() to store transient data, thanks Jeremy, they are now in "plugin-config-data/signalk-to-noforeignland/nfl-track" and renamed to pending.json1 and sent.json1
-* CHANGE: Optimize GPS detection if multiple navigation.position from different sources exist.
+* CHANGE: Optimize GNSS detection if multiple navigation.position from different sources exist.
 * CHANGE: PluginStatus optimized for limited space available.
 * CHANGE: doc/beta_install.md changed for new file structure.
 
@@ -49,13 +50,13 @@ The "new" one has to be installed once manually, after that everything is back t
 
 0.1.27-beta.1
 * NEW: NPMJS requires new method for publishing. The old tokens will expire Nov 19th, 2025, so moving to OIDC authentication.
-* NEW: Check the GPS status in navigation.position, else retry and throw PluginError on Dashboard
+* NEW: Check the GNSS status in navigation.position, else retry and throw PluginError on Dashboard
 * CHANGE: Keep track data on disk rewritten and migrate old files to new structure, so nfl-track-sent.jsonl becomes a continuous archive of all sent track data over time, when enabled. New Logic:
     * New points accumulate in nfl-track-pending.jsonl
     * Send succeeds → API confirms receipt
     * If keepFiles=true: The content of pending file is appended to nfl-track-sent.jsonl (line 588)
     * Pending file is deleted
-    * Next GPS points → create a new pending file
+    * Next GNSS points → create a new pending file
     * Next successful send → appends again to the same nfl-track-sent.jsonl
 
 0.1.26
