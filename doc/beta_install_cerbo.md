@@ -84,9 +84,6 @@ chown -R signalk:signalk /data/conf/signalk/*
 ```
 
 
-----------------------------------------
-
-
 # dev tree (unstable) install - NOT RECOMMENDED
 
 1. Backup as above 
@@ -111,6 +108,20 @@ chown -R signalk:signalk /data/conf/signalk/*
 ```
 
 3. Restart Server & Check logs
+```
+svc -t /service/signalk-server
+```
+
+# Manual Fixes
+
+## WARNING: found multiple copies of plugin with id signalk-to-noforeignland at /data/conf/signalk/node_modules/ and /data/conf/signalk/node_modules/
+
+```
+cd /data/conf/signalk && npm uninstall signalk-to-noforeignland signalk-to-nfl
+```
+
+and than
+
 ```
 svc -t /service/signalk-server
 ```

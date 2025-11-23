@@ -52,8 +52,5 @@ package-lock.json
 .DS_Store
 *.db
 
-# Claude Code
-.claude
-
 #npm packaged files
 *.tgz

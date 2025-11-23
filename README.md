@@ -14,8 +14,9 @@ Upgrade to >1.1.0 by installing this plugin from the Appstore again. Your old co
 * SK data paths about the plugin status for your own dashboard or Node Red coding
 
 ## Issues
-* Server -> Plugin Config -> Signal K to Noforeignland -> Enable debug log (top right)
-* Report issues on GitHub (https://github.com/noforeignland/nfl-signalk/issues)
+* Enable debug logging: Server -> Plugin Config -> Signal K to Noforeignland -> Enable debug log (top right)
+* Check logs: Server -> Server Log (in SignalK web UI)
+* Report issues on [GitHub](https://github.com/noforeignland/nfl-signalk/issues)
 
 ## Requirements
 * An internet connection is required in order to update noforeignland.com
@@ -43,8 +44,6 @@ noforeignland.status_boolean               - number            - 0 = normal oper
 noforeignland.source - string              - string            - data source of navigation.position
 notifications.noforeignland.status_boolean - json object       - auto created
 ```
-
-https://github.com/noforeignland/nfl-signalk/issues
 
 # Virctron Cerbo GX Users
 

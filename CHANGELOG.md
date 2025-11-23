@@ -1,6 +1,10 @@
 1.1.0
 * CHANGE: Refactored Project structure, see PROJECT_STRUCTURE.md
 * CHANGE: Use phrase GNSS instead of GPS - Thanks Piotr
+* BUGFIX: Reverted to beta.3 working configuration (beta.10) - undoing all failed schema experiments from beta.4-9
+* CHANGE: Improved cleanup error handling - only shows error after all retry attempts fail
+* CHANGE: Added installed plugins logging for better debugging
+* CHANGE: Platform-specific cleanup instructions (Cerbo GX vs standard)
 
 1.0.1
 * CHANGE: Cleanup previous installs and migrate plugin config, removes depricated old plugins.
