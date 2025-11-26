@@ -202,17 +202,8 @@ class SignalkToNoforeignland {
       if (!hasTrack) {
         return;
       }
-      
-      // Test internet connection
-      const hasInternet = await this.trackSender.testInternet();
-      if (!hasInternet) {
-        const errorMsg = 'No internet connection detected. Unable to send tracking data to NFL. DNS lookups failed - check your internet connection.';
-        this.app.debug(errorMsg);
-        this.setPluginError(errorMsg);
-        return;
-      }
-      
-      // Send track data
+
+      // Send track data (has built-in retry logic)
       const success = await this.trackSender.sendTrack();
       
       if (success) {
