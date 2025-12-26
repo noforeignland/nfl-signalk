@@ -1,4 +1,5 @@
 1.1.0
+* CHANGE: Removed postinstall script - SignalK server will use --ignore-scripts (issue #2181). Runtime PluginCleanup handles all migration.
 * CHANGE: Refactored Project structure, see PROJECT_STRUCTURE.md
 * CHANGE: Use phrase GNSS instead of GPS - Thanks Piotr
 * BUGFIX: Removed unreliable DNS-based internet connectivity test (beta.11) - API retry logic is sufficient

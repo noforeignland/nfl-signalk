@@ -1,9 +1,6 @@
 # Signal K To Noforeignland
 Effortlessly log your boat's movement to **noforeignland.com**
 
-## Important for 0.1.x users
-Upgrade to >1.1.0 by installing this plugin from the Appstore again. Your old config will be migrated and old plugins will be automatically removed.
-
 ## Features
 * Automatically log your position to noforeignland.com
 * Send detailed tracks to log your entire trip and not just your final position
