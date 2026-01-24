@@ -1,5 +1,8 @@
+1.2.0-beta.4
+* FIX: Add .npmignore so dist/ is not excluded by .gitignore
+
 1.2.0-beta.3
-* FIX: npm package now correctly includes dist/ folder
+* FIX: npm package now correctly includes dist/ folder (failed - .gitignore override)
 
 1.2.0-beta.2
 * FIX: CI/CD publish workflow now builds before publishing

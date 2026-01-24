@@ -1,0 +1,18 @@
+# Source files (not needed in published package)
+src/
+test/
+
+# Config files
+tsconfig.json
+tsconfig.eslint.json
+tsconfig.tsbuildinfo
+eslint.config.mjs
+jest.config.js
+.prettierrc
+
+# Development files
+.github/
+coverage/
+*.log
+
+# DO NOT ignore dist/ - it's needed for the package!

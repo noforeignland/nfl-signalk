@@ -3,7 +3,7 @@
   "signalk": {
     "id": "@noforeignland/signalk-to-noforeignland"
   },
-  "version": "1.2.0-beta.3",
+  "version": "1.2.0-beta.4",
   "description": "SignalK track logger to noforeignland.com",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
