@@ -1,3 +1,8 @@
+1.2.0-beta.2
+* FIX: CI/CD publish workflow now builds before publishing
+* FIX: API errors show actual message (e.g., "invalid BOAT API key") instead of generic retry failure
+* FIX: Only retry on network errors and 5xx server errors, not 4xx client errors
+
 1.2.0-beta.1
 * NEW: Complete TypeScript rewrite with strict type checking (strictTypeChecked ESLint, no workarounds)
 * NEW: Velocity-based GPS outlier filtering - catches impossible position jumps (e.g., jumping from Thailand to Antarctica in 1 second)
