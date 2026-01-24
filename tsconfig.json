@@ -1,0 +1,32 @@
+{
+  "extends": "@tsconfig/node20/tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "allowJs": true,
+    "typeRoots": ["./src/types", "./node_modules/@types"],
+    "resolveJsonModule": true,
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnusedLabels": false,
+    "allowUnreachableCode": false,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": false,
+    "moduleResolution": "node",
+    "module": "commonjs",
+    "target": "ES2022"
+  },
+  "ts-node": {
+    "files": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "test"]
+}

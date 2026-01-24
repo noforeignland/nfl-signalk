@@ -6,8 +6,9 @@ Effortlessly log your boat's movement to **noforeignland.com**
 * Send detailed tracks to log your entire trip and not just your final position
 * Can be used in near real time or cache and upload when stopped and data-connection is available
 * Sends 24h keepalive
+* **Velocity-based GPS outlier filtering** - catches anomalous GPS jumps (new in v1.2.0)
 * Option to archive your track on the local disk
-* Detailed plugin information in the SK dashboard 
+* Detailed plugin information in the SK dashboard
 * SK data paths about the plugin status for your own dashboard or Node Red coding
 
 ## Issues
@@ -28,7 +29,10 @@ Effortlessly log your boat's movement to **noforeignland.com**
 ## Configuration
 1. Add your boat's API Key into the Server > Plugin Config > Signal K to Noforeignland > Boat API Key
 2. Hit "Submit"
-3. Restart the Signal K server 
+3. Restart the Signal K server
+
+### Expert Settings
+* **Maximum velocity (m/s)** - Rejects positions implying movement faster than this threshold. Catches GPS outliers that jump to impossible locations. Default: 50 m/s (~97 knots). Adjust higher for aircraft tracking. 
 
 ## Data paths created by this plugin
 ```
@@ -42,7 +46,22 @@ noforeignland.source - string              - string            - data source of 
 notifications.noforeignland.status_boolean - json object       - auto created
 ```
 
-# Virctron Cerbo GX Users
+## Development
+
+This plugin is written in TypeScript with strict type checking.
+
+```bash
+npm install          # Install dependencies
+npm run build        # Compile TypeScript
+npm run dev          # Watch mode compilation
+npm run test         # Run tests
+npm run test:coverage # Run tests with coverage
+npm run lint         # Run ESLint
+npm run format       # Run Prettier
+npm run validate     # Run all checks (typecheck + lint + test:coverage)
+```
+
+# Victron Cerbo GX Users
 
 ## Limited storage
 Signal K can quickly exhaust the small onboard storage of the device, especially when a lot of logging is enabled and not properly configured. Even concider to not enable "Keep track files on disk" if you are moving a lot.

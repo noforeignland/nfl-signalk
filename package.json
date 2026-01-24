@@ -3,9 +3,13 @@
   "signalk": {
     "id": "@noforeignland/signalk-to-noforeignland"
   },
-  "version": "1.1.0",
+  "version": "1.2.0-beta.1",
   "description": "SignalK track logger to noforeignland.com",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "keywords": [
     "signalk-node-server-plugin",
     "signalk-category-utility"
@@ -24,11 +28,39 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "echo \"No tests specified\" && exit 0"
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src test",
+    "lint:fix": "eslint src test --fix",
+    "format": "eslint src test --fix && prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
+    "typecheck": "tsc --noEmit",
+    "validate": "npm run typecheck && npm run lint && npm run test:coverage",
+    "prepublishOnly": "npm run validate && npm run build"
   },
   "dependencies": {
-    "cron": "^2.1.0",
-    "fs-extra": "^10.1.0",
-    "node-fetch": "^2.6.7"
+    "cron": "^3.2.1",
+    "fs-extra": "^11.2.0",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@signalk/server-api": "^2.10.0",
+    "@tsconfig/node20": "^20.1.4",
+    "@types/fs-extra": "^11.0.4",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^20.17.14",
+    "@types/node-fetch": "^2.6.12",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
+    "jest": "^29.7.0",
+    "mock-fs": "^5.4.1",
+    "prettier": "^3.4.2",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.21.0"
   }
 }

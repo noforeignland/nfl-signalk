@@ -1,3 +1,14 @@
+1.2.0-beta.1
+* NEW: Complete TypeScript rewrite with strict type checking (strictTypeChecked ESLint, no workarounds)
+* NEW: Velocity-based GPS outlier filtering - catches impossible position jumps (e.g., jumping from Thailand to Antarctica in 1 second)
+* NEW: Configurable max velocity threshold (default: 50 m/s ≈ 97 knots) in Expert Settings
+* NEW: Comprehensive test suite with Jest (100% coverage on validation utilities)
+* NEW: ESLint (strict) and Prettier for code quality
+* NEW: GitHub Actions CI for Node.js 22.x and 24.x
+* CHANGE: Build output now in dist/ directory
+* CHANGE: Type declarations included for downstream TypeScript users
+* CHANGE: skipLibCheck disabled - all library types validated
+
 1.1.0
 * CHANGE: Removed postinstall script - SignalK server will use --ignore-scripts (issue #2181). Runtime PluginCleanup handles all migration.
 * CHANGE: Refactored Project structure, see PROJECT_STRUCTURE.md
