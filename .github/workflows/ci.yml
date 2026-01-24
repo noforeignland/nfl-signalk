@@ -45,9 +45,15 @@ jobs:
         run: npm run test:coverage
 
       - name: Build
-        run: npm run build
+        run: |
+          echo "Running build..."
+          npm run build
+          echo "Build completed with exit code: $?"
 
       - name: Verify dist exists
         run: |
-          test -f dist/index.js
-          test -f dist/index.d.ts
+          echo "Listing dist directory:"
+          ls -la dist/ || echo "dist directory not found"
+          echo "Checking for index.js:"
+          test -f dist/index.js && echo "dist/index.js exists" || echo "dist/index.js NOT FOUND"
+          test -f dist/index.d.ts && echo "dist/index.d.ts exists" || echo "dist/index.d.ts NOT FOUND"
