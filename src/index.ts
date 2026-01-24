@@ -1,6 +1,6 @@
 /**
  * Signal K plugin to log track data to noforeignland.com
- * Version 1.2.0-beta.4 - TypeScript rewrite with velocity-based outlier filtering
+ * Version 1.2.0-beta.5 - TypeScript rewrite with velocity-based outlier filtering
  */
 
 import { CronJob } from 'cron';

@@ -6,7 +6,6 @@
     "allowJs": true,
     "typeRoots": ["./src/types", "./node_modules/@types"],
     "resolveJsonModule": true,
-    "composite": true,
     "declaration": true,
     "declarationMap": true,
     "forceConsistentCasingInFileNames": true,

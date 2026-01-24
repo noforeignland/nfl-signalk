@@ -1,5 +1,8 @@
+1.2.0-beta.5
+* FIX: Remove composite:true from tsconfig - tsc --noEmit was preventing actual build
+
 1.2.0-beta.4
-* FIX: Add .npmignore so dist/ is not excluded by .gitignore
+* FIX: Add .npmignore so dist/ is not excluded by .gitignore (still failed)
 
 1.2.0-beta.3
 * FIX: npm package now correctly includes dist/ folder (failed - .gitignore override)

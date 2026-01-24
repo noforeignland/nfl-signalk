@@ -29,7 +29,11 @@ jobs:
         run: npm install -g npm@latest
       - run: npm ci
 
-      - run: npm run build
+      - name: Build
+        run: |
+          npm run build
+          echo "Checking dist folder:"
+          ls -la dist/
 
       - run: npm test
 
