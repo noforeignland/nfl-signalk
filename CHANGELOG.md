@@ -1,3 +1,6 @@
+1.2.0-beta.3
+* FIX: npm package now correctly includes dist/ folder
+
 1.2.0-beta.2
 * FIX: CI/CD publish workflow now builds before publishing
 * FIX: API errors show actual message (e.g., "invalid BOAT API key") instead of generic retry failure
