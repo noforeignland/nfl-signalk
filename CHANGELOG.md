@@ -1,3 +1,6 @@
+1.2.0 
+* Release - no changes
+
 1.2.0-beta.5
 * FIX: Remove composite:true from tsconfig - tsc --noEmit was preventing actual build
 
