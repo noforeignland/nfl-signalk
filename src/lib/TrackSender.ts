@@ -162,11 +162,17 @@ export class TrackSender {
         // Network errors are retryable, API errors depend on the error type
         const shouldRetry = err instanceof ApiError ? err.retryable : true;
 
-        this.app.debug(`Attempt ${String(attempt)} failed:`, error.message);
+        // Replace cryptic node-fetch AbortError message with a human-readable one
+        const message =
+          error.name === 'AbortError'
+            ? `Request timed out after ${String((baseTimeout * attempt) / 1000)}s`
+            : error.message;
+
+        this.app.debug(`Attempt ${String(attempt)} failed:`, message);
 
         if (!shouldRetry || attempt === maxRetries) {
           // Don't retry client errors or if we've exhausted retries
-          throw new Error(error.message);
+          throw new Error(message);
         } else {
           const waitTime = 2000 * attempt;
           this.app.debug(`Waiting ${String(waitTime)}ms before retry...`);
