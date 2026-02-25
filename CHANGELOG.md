@@ -1,5 +1,6 @@
 1.2.1
 * FIX: Replace cryptic "The user aborted a request" timeout error with human-readable "Request timed out after Xs" message (#17)
+* CHANGE: Convert jest.config.js to TypeScript, add ts-node devDependency
 
 1.2.0
 * Release - no changes
