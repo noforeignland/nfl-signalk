@@ -5,10 +5,13 @@
  * The CI workflow sets SIGNALK_URL=http://localhost:3000
  */
 
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access,
+   @typescript-eslint/no-explicit-any, @typescript-eslint/restrict-template-expressions,
+   @typescript-eslint/explicit-function-return-type */
+
 const SIGNALK_URL = process.env.SIGNALK_URL || 'http://localhost:3000';
 const PLUGIN_ID = 'signalk-to-noforeignland';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchJson(path: string): Promise<any> {
   const res = await fetch(`${SIGNALK_URL}${path}`);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} on ${path}`);
