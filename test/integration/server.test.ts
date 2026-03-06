@@ -8,7 +8,8 @@
 const SIGNALK_URL = process.env.SIGNALK_URL || 'http://localhost:3000';
 const PLUGIN_ID = 'signalk-to-noforeignland';
 
-async function fetchJson(path: string) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchJson(path: string): Promise<any> {
   const res = await fetch(`${SIGNALK_URL}${path}`);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} on ${path}`);
   return res.json();
