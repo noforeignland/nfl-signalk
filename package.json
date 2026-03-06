@@ -30,7 +30,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "jest",
+    "test": "jest --testPathIgnorePatterns=test/integration",
+    "test:integration": "jest test/integration --testTimeout=20000",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "lint": "eslint src test",
