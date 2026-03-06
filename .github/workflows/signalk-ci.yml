@@ -1,0 +1,11 @@
+name: SignalK Plugin CI
+
+on:
+  push:
+    branches: [test-plugin-ci]
+
+jobs:
+  test:
+    uses: dirkwa/signalk-server/.github/workflows/plugin-ci.yml@feat-ci-for-plugins
+    with:
+      enable-signalk-integration: true
