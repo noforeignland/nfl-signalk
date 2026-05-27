@@ -50,7 +50,7 @@
     "prepublishOnly": "npm run validate && npm run build"
   },
   "dependencies": {
-    "cron": "^3.2.1",
+    "cron": "^4.4.0",
     "fs-extra": "^11.2.0",
     "node-fetch": "^2.7.0"
   },
