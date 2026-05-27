@@ -266,7 +266,7 @@ class SignalkToNoforeignland {
 
     // Stop CRON job
     if (this.cron) {
-      this.cron.stop();
+      void this.cron.stop();
       this.cron = null;
     }
 
