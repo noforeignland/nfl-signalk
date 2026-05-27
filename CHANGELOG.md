@@ -1,3 +1,10 @@
+1.3.1
+* CHANGE: Bump cron 3 → 4 for Node 24 compatibility (#31)
+* CHANGE: Attach `cause` to thrown errors in DirectoryUtils and TrackSender for better diagnostics (#34)
+* CHANGE: CI now runs across Linux x64/arm64, macOS and Windows on Node 22/24 via the shared SignalK plugin-ci workflow (#35, #36)
+* CHANGE: Auto-create GitHub Release on `v*` tag push (#26)
+* CHANGE: Bump grouped minor/patch dependencies (typescript-eslint 8.60, @signalk/server-api 2.25, prettier 3.8.3, ts-jest, fs-extra) (#27)
+
 1.3.0
 * NEW: Signal K Appstore metadata — displayName, appIcon and screenshots are now shown in the Appstore card and detail page (#21)
 * NEW: Agent/contributor guide AGENTS.md (with CLAUDE.md symlink)
