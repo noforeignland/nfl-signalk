@@ -1,0 +1,77 @@
+name: SignalK Plugin CI
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+    inputs:
+      test-command:
+        description: Command to run tests
+        required: false
+        default: npm run validate
+        type: string
+      build-command:
+        description: Command to build the plugin
+        required: false
+        default: npm run build --if-present
+        type: string
+      format-check-command:
+        description: 'Optional blocking format check, e.g. npm run format:check'
+        required: false
+        default: npm run format:check
+        type: string
+      coverage-command:
+        description: 'Optional coverage command (replaces the test run), e.g. npm run test:coverage'
+        required: false
+        default: ''
+        type: string
+      node-versions:
+        description: 'JSON array of Node versions, example: ["22","24"]'
+        required: false
+        default: '["22", "24"]'
+        type: string
+      enable-armv7:
+        description: Run armv7 (Cerbo GX) tests via QEMU
+        required: false
+        default: false
+        type: boolean
+      enable-signalk-integration:
+        description: Start SignalK server and install plugin for integration testing
+        required: false
+        default: false
+        type: boolean
+      signalk-server-versions:
+        description: 'JSON array of signalk-server versions for integration testing, e.g. ["2.23.0","latest"]'
+        required: false
+        default: '["latest"]'
+        type: string
+
+jobs:
+  test-plugin-auto:
+    if: ${{ github.event_name != 'workflow_dispatch' }}
+    uses: SignalK/signalk-server/.github/workflows/plugin-ci.yml@master
+    with:
+      test-command: npm run validate
+      build-command: npm run build --if-present
+      format-check-command: npm run format:check
+      node-versions: '["22", "24"]'
+      enable-armv7: false
+      enable-signalk-integration: false
+      signalk-server-versions: '["latest"]'
+
+  test-plugin-manual:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    uses: SignalK/signalk-server/.github/workflows/plugin-ci.yml@master
+    with:
+      test-command: ${{ inputs.test-command }}
+      build-command: ${{ inputs.build-command }}
+      format-check-command: ${{ inputs.format-check-command }}
+      coverage-command: ${{ inputs.coverage-command }}
+      node-versions: ${{ inputs.node-versions }}
+      enable-armv7: ${{ inputs.enable-armv7 }}
+      enable-signalk-integration: ${{ inputs.enable-signalk-integration }}
+      signalk-server-versions: ${{ inputs.signalk-server-versions }}

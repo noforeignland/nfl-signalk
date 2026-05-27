@@ -39,7 +39,7 @@ test/
   unit/                 # Jest tests
   mocks/signalk-app.ts  # Minimal SignalKApp double for tests
 doc/                    # User install notes (Cerbo, RPi)
-.github/workflows/      # ci.yml (test+lint+build), publish.yml (tag → npm)
+.github/workflows/      # signalk-ci.yml (push/PR via shared SignalK reusable workflow), publish.yml (tag → npm)
 ```
 
 `PROJECT_STRUCTURE.md` has the long-form architecture description and data-flow diagrams — read it before adding new modules or changing the startup sequence.
