@@ -1,14 +1,22 @@
 {
   "name": "@noforeignland/signalk-to-noforeignland",
   "signalk": {
-    "id": "@noforeignland/signalk-to-noforeignland"
+    "id": "@noforeignland/signalk-to-noforeignland",
+    "displayName": "Signal K to Noforeignland",
+    "appIcon": "./doc/logo/nfl-logo-red-round.png",
+    "screenshots": [
+      "./doc/screenshots/1_nfl_phone-8.jpg",
+      "./doc/screenshots/2_nfl_phone-7.jpg"
+    ]
   },
   "version": "1.2.1",
   "description": "SignalK track logger to noforeignland.com",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "doc/logo",
+    "doc/screenshots"
   ],
   "keywords": [
     "signalk-node-server-plugin",
