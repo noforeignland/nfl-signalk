@@ -172,7 +172,7 @@ export class TrackSender {
 
         if (!shouldRetry || attempt === maxRetries) {
           // Don't retry client errors or if we've exhausted retries
-          throw new Error(message);
+          throw new Error(message, { cause: err });
         } else {
           const waitTime = 2000 * attempt;
           this.app.debug(`Waiting ${String(waitTime)}ms before retry...`);

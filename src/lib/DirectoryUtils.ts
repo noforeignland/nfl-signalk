@@ -26,7 +26,7 @@ export function createDir(dir: string, app: DebugLogger): boolean {
     } catch (error: unknown) {
       const err = error as NodeJS.ErrnoException;
       app.debug('[createDir]', err.message);
-      throw new Error(`No rights to directory ${dir}`);
+      throw new Error(`No rights to directory ${dir}`, { cause: error });
     }
   } else {
     try {
@@ -38,13 +38,13 @@ export function createDir(dir: string, app: DebugLogger): boolean {
         case 'EACCES':
         case 'EPERM':
           app.debug(`Failed to create ${dir} by Permission denied`);
-          throw new Error(`Failed to create ${dir} by Permission denied`);
+          throw new Error(`Failed to create ${dir} by Permission denied`, { cause: error });
         case 'ETIMEDOUT':
           app.debug(`Failed to create ${dir} by Operation timed out`);
-          throw new Error(`Failed to create ${dir} by Operation timed out`);
+          throw new Error(`Failed to create ${dir} by Operation timed out`, { cause: error });
         default:
           app.debug(`Error creating directory ${dir}: ${err.message}`);
-          throw new Error(`Error creating directory ${dir}: ${err.message}`);
+          throw new Error(`Error creating directory ${dir}: ${err.message}`, { cause: error });
       }
     }
   }
