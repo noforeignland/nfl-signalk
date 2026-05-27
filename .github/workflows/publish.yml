@@ -7,7 +7,7 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
 
 jobs:
   publish:
@@ -38,9 +38,33 @@ jobs:
       - run: npm test
 
       - name: Publish
-        run: | 
+        run: |
           if [[ "${{ github.ref }}" == refs/tags/*-beta.* ]] || [[ "${{ github.ref }}" == refs/tags/*-rc.* ]]; then
             npm publish --provenance --access public --tag beta
           else
             npm publish --provenance --access public
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          NOTES_FILE="$(mktemp)"
+          awk -v v="$VERSION" '
+            $0 == v { in_section = 1; next }
+            in_section && /^[0-9]+\.[0-9]+\.[0-9]+/ { exit }
+            in_section { print }
+          ' CHANGELOG.md > "$NOTES_FILE"
+
+          PRERELEASE_FLAG=""
+          if [[ "$TAG" == *-beta.* ]] || [[ "$TAG" == *-rc.* ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          if [[ -s "$NOTES_FILE" ]]; then
+            gh release create "$TAG" --title "$VERSION" --notes-file "$NOTES_FILE" $PRERELEASE_FLAG
+          else
+            gh release create "$TAG" --title "$VERSION" --generate-notes $PRERELEASE_FLAG
           fi
