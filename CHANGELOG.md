@@ -1,3 +1,7 @@
+1.3.0
+* NEW: Signal K Appstore metadata — displayName, appIcon and screenshots are now shown in the Appstore card and detail page (#21)
+* NEW: Agent/contributor guide AGENTS.md (with CLAUDE.md symlink)
+
 1.2.1
 * FIX: Replace cryptic "The user aborted a request" timeout error with human-readable "Request timed out after Xs" message (#17)
 * CHANGE: Convert jest.config.js to TypeScript, add ts-node devDependency
