@@ -13,8 +13,6 @@ import {
   ZERO_THRESHOLD,
 } from '../../src/utils/validation';
 import { equirectangularDistance, msToKnots, knotsToMs } from '../../src/utils/geo';
-import type { Position } from '../../src/types';
-
 describe('validatePosition', () => {
   describe('valid positions', () => {
     it('accepts a normal position', () => {
@@ -76,24 +74,20 @@ describe('validatePosition', () => {
 
   describe('invalid input handling', () => {
     it('rejects null position', () => {
-      expect(validatePosition(null as unknown as Position).valid).toBe(false);
+      expect(validatePosition(null).valid).toBe(false);
     });
 
     it('rejects undefined position', () => {
-      expect(validatePosition(undefined as unknown as Position).valid).toBe(false);
+      expect(validatePosition(undefined).valid).toBe(false);
     });
 
     it('rejects non-object position', () => {
-      expect(validatePosition('invalid' as unknown as Position).valid).toBe(false);
+      expect(validatePosition('invalid').valid).toBe(false);
     });
 
     it('rejects non-numeric coordinates', () => {
-      expect(validatePosition({ latitude: 'foo', longitude: 0 } as unknown as Position).valid).toBe(
-        false
-      );
-      expect(validatePosition({ latitude: 0, longitude: 'bar' } as unknown as Position).valid).toBe(
-        false
-      );
+      expect(validatePosition({ latitude: 'foo', longitude: 0 }).valid).toBe(false);
+      expect(validatePosition({ latitude: 0, longitude: 'bar' }).valid).toBe(false);
     });
 
     it('rejects NaN coordinates', () => {
