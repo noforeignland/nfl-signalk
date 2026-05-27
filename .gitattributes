@@ -1,0 +1,10 @@
+# Force LF in the working tree on every platform so prettier --check passes
+# on Windows runners — .prettierrc inherits Prettier 3's endOfLine: "lf" default.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
