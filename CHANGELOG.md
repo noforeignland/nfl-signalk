@@ -1,3 +1,7 @@
+1.3.2-beta.1
+* FIX: HealthMonitor staleness threshold is now derived from `trackFrequency` (`max(300s, trackFrequency * 2 + 60s)`) so the false-positive "No GNSS position data" error and flapping `noforeignland.status_boolean` no longer trip on a healthy GNSS when `trackFrequency` is large. Most-affected setups: `trackFrequency >= 150s`. (#38, #39)
+* DOCS: README and AGENTS.md no longer claim `notifications.noforeignland.status_boolean` is auto-created — the plugin emits no `notifications.*` deltas. README now points users at a Zones rule on `noforeignland.status_boolean` if they want a real notification. (#39)
+
 1.3.1
 * CHANGE: Bump cron 3 → 4 for Node 24 compatibility (#31)
 * CHANGE: Attach `cause` to thrown errors in DirectoryUtils and TrackSender for better diagnostics (#34)
