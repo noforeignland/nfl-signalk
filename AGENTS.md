@@ -75,7 +75,7 @@ noforeignland.savepoint_local        Locale string of the same
 noforeignland.sent_to_api            ISO8601 of last successful upload
 noforeignland.sent_to_api_local      Locale string of the same
 noforeignland.status                 Human-readable status
-noforeignland.status_boolean         0 = OK, 1 = error (drives notification)
+noforeignland.status_boolean         0 = OK, 1 = error (no notification emitted; users set Zones if they want one)
 noforeignland.source                 Active GNSS source name
 ```
 

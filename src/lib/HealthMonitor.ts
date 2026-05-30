@@ -11,15 +11,33 @@ import type {
   OnHealthyCallback,
 } from '../types';
 
+const BASE_STALE_THRESHOLD_SECONDS = 300;
+const TRACK_FREQUENCY_HEADROOM_SECONDS = 60;
+
+/**
+ * Compute the staleness threshold from the configured trackFrequency.
+ * navigation.position is subscribed with `minPeriod: trackFrequency * 1000`,
+ * so the plugin only sees one delivery per trackFrequency window. We need at
+ * least two windows of headroom before declaring the source dead, otherwise
+ * any user with trackFrequency >= 150s gets false "No GNSS position data"
+ * errors on a perfectly healthy GNSS.
+ */
+export function computeStaleThresholdSeconds(trackFrequencySeconds: number): number {
+  const derived = trackFrequencySeconds * 2 + TRACK_FREQUENCY_HEADROOM_SECONDS;
+  return Math.max(BASE_STALE_THRESHOLD_SECONDS, derived);
+}
+
 export class HealthMonitor {
   private app: SignalKApp;
   private options: FlatConfig;
   private checkInterval: ReturnType<typeof setInterval> | null = null;
   private initialTimeout: ReturnType<typeof setTimeout> | null = null;
+  private staleThresholdSeconds: number;
 
   constructor(app: SignalKApp, options: FlatConfig) {
     this.app = app;
     this.options = options;
+    this.staleThresholdSeconds = computeStaleThresholdSeconds(options.trackFrequency);
   }
 
   /**
@@ -75,7 +93,10 @@ export class HealthMonitor {
 
       onError(errorMsg);
       this.app.debug('Position health check: No position data ever received' + filterMsg);
-    } else if (timeSinceLastPosition !== null && timeSinceLastPosition > 300) {
+    } else if (
+      timeSinceLastPosition !== null &&
+      timeSinceLastPosition > this.staleThresholdSeconds
+    ) {
       const errorMsg = this.options.filterSource
         ? `No GNSS position data${filterMsg} for ${String(Math.floor(timeSinceLastPosition / 60))} minutes. Check that source '${this.options.filterSource}' is active, or change/clear Position source device in Expert Settings.`
         : `No GNSS position data${filterMsg} for ${String(Math.floor(timeSinceLastPosition / 60))} minutes. Check your GNSS connection.`;
