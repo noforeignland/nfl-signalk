@@ -36,15 +36,16 @@ Effortlessly log your boat's movement to **noforeignland.com**
 
 ## Data paths created by this plugin
 ```
-noforeignland.savepoint                    - ISO8601 timestamp - when was last point saved to trackfile
-noforeignland.savepoint_local              - locale timestamp  - when was last point saved to trackfile
-noforeignland.sent_to_api                  - ISO8601 timestamp - last successful transfer to the API
-noforeignland.sent_to_api_local            - locale timestamp  - last successful transfer to the API
-noforeignland.status                       - string            - Status & Error messages
-noforeignland.status_boolean               - number            - 0 = normal operation, 1 = error
-noforeignland.source - string              - string            - data source of navigation.position
-notifications.noforeignland.status_boolean - json object       - auto created
+noforeignland.savepoint         - ISO8601 timestamp - when was last point saved to trackfile
+noforeignland.savepoint_local   - locale timestamp  - when was last point saved to trackfile
+noforeignland.sent_to_api       - ISO8601 timestamp - last successful transfer to the API
+noforeignland.sent_to_api_local - locale timestamp  - last successful transfer to the API
+noforeignland.status            - string            - Status & Error messages
+noforeignland.status_boolean    - number            - 0 = normal operation, 1 = error
+noforeignland.source            - string            - data source of navigation.position
 ```
+
+To get a Signal K notification when the plugin enters the error state, add a Zone rule on `noforeignland.status_boolean` (Server → Data Browser → the path → "Set Zones"): treat values `>= 1` as `alarm` (or `alert`). The plugin itself does not emit any `notifications.*` deltas.
 
 ## Development
 
