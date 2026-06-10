@@ -9,6 +9,7 @@ import fetch, { Headers } from 'node-fetch';
 import type { SignalKApp, FlatConfig, SavedPosition, TrackData, NFLApiResponse } from '../types';
 import { NFL_PLUGIN_API_KEY, NFL_API_URL } from '../types/api';
 import { isValidLatitude, isValidLongitude } from '../utils/validation';
+import { describeFetchError } from '../utils/errors';
 
 /**
  * Custom error class to distinguish retryable from non-retryable errors
@@ -162,11 +163,13 @@ export class TrackSender {
         // Network errors are retryable, API errors depend on the error type
         const shouldRetry = err instanceof ApiError ? err.retryable : true;
 
-        // Replace cryptic node-fetch AbortError message with a human-readable one
+        // Replace cryptic node-fetch AbortError message with a human-readable one.
+        // For other network failures, describeFetchError fills in the diagnostic
+        // code when node-fetch left the FetchError reason blank (issue #44).
         const message =
           error.name === 'AbortError'
             ? `Request timed out after ${String((baseTimeout * attempt) / 1000)}s`
-            : error.message;
+            : describeFetchError(err);
 
         this.app.debug(`Attempt ${String(attempt)} failed:`, message);
 
