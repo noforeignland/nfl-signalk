@@ -51,5 +51,8 @@ jspm_packages
 .DS_Store
 *.db
 
+# Local scratch dir (cr review output, agent notes, diffs)
+.scratch/
+
 #npm packaged files
 *.tgz
