@@ -3,6 +3,7 @@
  */
 
 import fs from 'fs-extra';
+import https from 'https';
 import path from 'path';
 import readline from 'readline';
 import fetch, { Headers } from 'node-fetch';
@@ -14,6 +15,20 @@ import { describeFetchError } from '../utils/errors';
 /**
  * Custom error class to distinguish retryable from non-retryable errors
  */
+/**
+ * Node >= 20 enables Happy Eyeballs with a 250 ms per-address connect cap.
+ * The NFL API resolves to multiple addresses (Cloudflare dual-stack), so on
+ * high-latency links (cellular/satellite at sea) every connect attempt is
+ * aborted before the TLS handshake can start and fetch fails instantly with
+ * ETIMEDOUT no matter what apiTimeout is set to (issue #44). Keep the
+ * IPv6/IPv4 fallback but give each address a budget that survives slow links;
+ * apiTimeout still bounds the request overall via the AbortController.
+ */
+const httpsAgent = new https.Agent({
+  autoSelectFamily: true,
+  autoSelectFamilyAttemptTimeout: 5000,
+});
+
 class ApiError extends Error {
   readonly retryable: boolean;
 
@@ -133,6 +148,7 @@ export class TrackSender {
           body: params,
           headers: new Headers(headers),
           signal: controller.signal,
+          agent: httpsAgent,
         });
 
         clearTimeout(timeoutId);
