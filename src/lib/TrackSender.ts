@@ -29,6 +29,25 @@ const httpsAgent = new https.Agent({
   autoSelectFamilyAttemptTimeout: 5000,
 });
 
+/**
+ * Read this plugin's own version from package.json once at load. The file sits
+ * two levels above the compiled module (dist/lib/TrackSender.js -> package root),
+ * outside rootDir, so we read it via __dirname rather than importing it. NFL logs
+ * this with each track to tell which plugin/version a boat is uploading from.
+ */
+function readPluginVersion(): string {
+  try {
+    const pkgPath = path.join(__dirname, '..', '..', 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version?: string };
+    return pkg.version ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+const PLUGIN_VERSION = readPluginVersion();
+const NODE_VERSION = process.version;
+
 class ApiError extends Error {
   readonly retryable: boolean;
 
@@ -109,6 +128,9 @@ export class TrackSender {
     params.append('timestamp', String(trackData.timestamp));
     params.append('track', JSON.stringify(trackData.track));
     params.append('boatApiKey', this.options.boatApiKey);
+    params.append('pluginVersion', PLUGIN_VERSION);
+    params.append('skVersion', this.app.config?.version ?? 'unknown');
+    params.append('nodeVersion', NODE_VERSION);
 
     const headers = { 'X-NFL-API-Key': NFL_PLUGIN_API_KEY };
     this.app.debug('sending track to API');

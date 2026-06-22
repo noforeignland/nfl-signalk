@@ -6,6 +6,9 @@ import type { SignalKApp, Delta, SubscribeCommand, Unsubscribe } from '../../src
 
 export interface MockAppOptions {
   dataDir?: string;
+  // When set, exposes app.config.version (the Signal K server release). Leave
+  // undefined to model older servers / @signalk/server-api where it's absent.
+  serverVersion?: string;
 }
 
 export interface MockSignalKApp extends SignalKApp {
@@ -65,6 +68,7 @@ export function createMockApp(options: MockAppOptions = {}): MockSignalKApp {
     subscriptionmanager: {
       subscribe: mocks.subscribe,
     },
+    ...(options.serverVersion !== undefined ? { config: { version: options.serverVersion } } : {}),
     _mocks: mocks,
     _triggerDelta: (delta: Delta): void => {
       if (subscribeCallback) {

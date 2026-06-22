@@ -17,6 +17,9 @@ export interface TrackPayload {
   timestamp: number;
   track: Array<[number, number, number]>; // [timestamp_ms, lat, lon]
   boatApiKey: string;
+  pluginVersion: string;
+  skVersion: string;
+  nodeVersion: string;
 }
 
 /**
@@ -29,7 +32,12 @@ export interface ApiConfig {
 }
 
 /**
- * NFL Plugin API key (hardcoded)
+ * NFL Plugin API key (hardcoded).
+ *
+ * Please don't reuse this key for other projects — it's shared by every install
+ * of this plugin and is subject to noforeignland.com's rate limits. If you're
+ * building your own integration, contact support@noforeignland.com and request
+ * your own key.
  */
 export const NFL_PLUGIN_API_KEY = '0ede6cb6-5213-45f5-8ab4-b4836b236f97';
 
