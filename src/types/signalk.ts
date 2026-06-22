@@ -88,6 +88,9 @@ export interface SignalKApp {
   savePluginOptions: (options: PluginConfig, callback: (err?: Error) => void) => void;
   handleMessage: (pluginId: string, delta: Partial<Delta>) => void;
   subscriptionmanager: SubscriptionManager;
+  // Set by signalk-server from its own package.json; absent in older servers
+  // and not guaranteed by @signalk/server-api, so read it defensively.
+  config?: { version?: string };
 }
 
 /**
