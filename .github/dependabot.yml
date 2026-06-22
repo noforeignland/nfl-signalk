@@ -27,6 +27,12 @@ updates:
         update-types: [version-update:semver-major]
       - dependency-name: '@types/node-fetch'
         update-types: [version-update:semver-major]
+      # Keep @types/node aligned with the lowest supported runtime (Node 20 on
+      # Victron Cerbo GX) so TypeScript rejects APIs that don't exist there.
+      # Bumping past 20 lets code typecheck against newer Node APIs that crash
+      # on the boat. See engines.node and @tsconfig/node20.
+      - dependency-name: '@types/node'
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /
