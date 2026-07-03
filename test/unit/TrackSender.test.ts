@@ -185,6 +185,69 @@ describe('TrackSender send behaviour', () => {
     expect(mockFetch).toHaveBeenCalledTimes(3);
   }, 15000);
 
+  it('requests the response uncompressed (compress: false)', async () => {
+    mockFetch.mockResolvedValue(okResponse());
+    const sender = new TrackSender(createMockApp(), makeConfig(), trackDir);
+
+    await sender.sendTrack();
+
+    const init = mockFetch.mock.calls[0][1];
+    expect(init?.compress).toBe(false);
+  });
+
+  it('treats HTTP 200 with an unreadable body as sent and clears the pending file', async () => {
+    // node-fetch shape of the Gunzip "Premature close" failure: the request was
+    // delivered and the server answered 200, but reading the body throws.
+    const prematureClose = Object.assign(
+      new Error(
+        'Invalid response body while trying to fetch https://example.invalid: Premature close'
+      ),
+      { name: 'FetchError', type: 'system', code: 'ERR_STREAM_PREMATURE_CLOSE' }
+    );
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: () => Promise.reject(prematureClose),
+    } as unknown as Awaited<ReturnType<typeof fetch>>);
+
+    const sender = new TrackSender(createMockApp(), makeConfig(), trackDir);
+
+    const ok = await sender.sendTrack();
+    expect(ok).toBe(true);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(await fs.pathExists(path.join(trackDir, 'pending.jsonl'))).toBe(false);
+  });
+
+  it('aborts a hanging body read via the attempt timeout and treats the 200 as sent', async () => {
+    // The abort timer must stay armed until the body is read; if it is cleared
+    // as soon as fetch() resolves, a body that never arrives leaves sendTrack()
+    // pending forever and the send cron never fires again.
+    mockFetch.mockImplementation((_url, init) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: () =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => {
+              reject(
+                Object.assign(new Error('The user aborted a request.'), { name: 'AbortError' })
+              );
+            });
+          }),
+      } as unknown as Awaited<ReturnType<typeof fetch>>)
+    );
+
+    const sender = new TrackSender(createMockApp(), makeConfig({ apiTimeout: 1 }), trackDir);
+
+    const ok = await sender.sendTrack();
+    expect(ok).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(await fs.pathExists(path.join(trackDir, 'pending.jsonl'))).toBe(false);
+  }, 10000);
+
   it('archives the pending file to sent.jsonl when keepFiles is on', async () => {
     mockFetch.mockResolvedValue(okResponse());
     const sender = new TrackSender(createMockApp(), makeConfig({ keepFiles: true }), trackDir);

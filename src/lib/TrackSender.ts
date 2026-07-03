@@ -165,36 +165,61 @@ export class TrackSender {
           controller.abort();
         }, currentTimeout);
 
-        const response = await fetch(NFL_API_URL, {
-          method: 'POST',
-          body: params,
-          headers: new Headers(headers),
-          signal: controller.signal,
-          agent: httpsAgent,
-        });
+        // The timeout must stay armed until the response body has been read:
+        // a truncated identity body otherwise leaves response.json() pending
+        // forever and the send cron never runs again until a server restart.
+        try {
+          const response = await fetch(NFL_API_URL, {
+            method: 'POST',
+            body: params,
+            headers: new Headers(headers),
+            signal: controller.signal,
+            agent: httpsAgent,
+            // The API reply is a few bytes of JSON; a gzipped reply can die in
+            // node-fetch's Gunzip stream with "Premature close", making a
+            // delivered upload look failed. Don't ask for compression at all.
+            compress: false,
+          });
 
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          const responseBody = (await response.json()) as NFLApiResponse;
-          if (responseBody.status === 'ok') {
-            this.app.debug('Track successfully sent to API');
-            return true;
+          if (response.ok) {
+            let responseBody: NFLApiResponse;
+            try {
+              responseBody = (await response.json()) as NFLApiResponse;
+            } catch (bodyErr) {
+              // Any 2xx means the server already accepted and stored the
+              // track. Failing to read the response body afterwards must not
+              // count as a failed upload — retrying/resending the pending file
+              // from here is what duplicates the whole track on the NFL map.
+              this.app.debug(
+                `Track delivered (HTTP ${String(response.status)}) but response body could not be read, treating as sent:`,
+                describeFetchError(bodyErr)
+              );
+              return true;
+            }
+            if (responseBody.status === 'ok') {
+              this.app.debug('Track successfully sent to API');
+              return true;
+            } else {
+              // API returned error with message - don't retry, this is a client-side issue
+              const apiMessage = responseBody.message ?? 'Unknown API error';
+              this.app.debug('API returned error:', apiMessage);
+              throw new ApiError(apiMessage, false);
+            }
           } else {
-            // API returned error with message - don't retry, this is a client-side issue
-            const apiMessage = responseBody.message ?? 'Unknown API error';
-            this.app.debug('API returned error:', apiMessage);
-            throw new ApiError(apiMessage, false);
+            this.app.debug(
+              'Could not send track to API, returned response code:',
+              response.status,
+              response.statusText
+            );
+            // 4xx = client error (don't retry), 5xx = server error (retry)
+            const shouldRetry = response.status >= 500;
+            throw new ApiError(
+              `HTTP ${String(response.status)} ${response.statusText}`,
+              shouldRetry
+            );
           }
-        } else {
-          this.app.debug(
-            'Could not send track to API, returned response code:',
-            response.status,
-            response.statusText
-          );
-          // 4xx = client error (don't retry), 5xx = server error (retry)
-          const shouldRetry = response.status >= 500;
-          throw new ApiError(`HTTP ${String(response.status)} ${response.statusText}`, shouldRetry);
+        } finally {
+          clearTimeout(timeoutId);
         }
       } catch (err) {
         const error = err as Error;
