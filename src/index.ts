@@ -1,321 +1,224 @@
 /**
- * Signal K plugin to log track data to noforeignland.com
+ * Signal K plugin that uploads the own vessel's track, as recorded by the
+ * Tracks plugin, to noforeignland.com
  */
 
 import { CronJob } from 'cron';
-import type {
-  SignalKApp,
-  Plugin,
-  PluginConfig,
-  FlatConfig,
-  ConfigSchema,
-  SavedPosition,
-} from './types';
+import type { SignalKApp, Plugin, PluginConfig, ConfigSchema } from './types';
 import { ConfigManager } from './lib/ConfigManager';
-import { PluginCleanup } from './lib/PluginCleanup';
-import { TrackMigration } from './lib/TrackMigration';
-import { TrackLogger } from './lib/TrackLogger';
 import { TrackSender } from './lib/TrackSender';
+import { TrackSource, TrackApiUnsupportedError, TracksNotRunningError } from './lib/TrackSource';
+import { TrackUploader, type PassResult, type UploaderDeps } from './lib/TrackUploader';
+import { UploadStateStore } from './lib/UploadState';
+import { PendingFile, legacyPendingFile } from './lib/PendingDrain';
+import { readSelfPosition } from './lib/SelfPosition';
 import { HealthMonitor } from './lib/HealthMonitor';
 import { DataPathEmitter } from './lib/DataPathEmitter';
 import { createDir } from './lib/DirectoryUtils';
+
+/** The Tracks plugin may register after this one starts; give it time before the first pass. */
+const FIRST_PASS_DELAY_MS = 2 * 60 * 1000;
 
 class SignalkToNoforeignland {
   private app: SignalKApp;
   private pluginId = 'signalk-to-noforeignland';
   private pluginName = 'Signal K to Noforeignland';
 
-  // Runtime state
-  private options: FlatConfig = {} as FlatConfig;
-  private upSince: number | null = null;
-  private cron: CronJob | null = null;
-  private lastSuccessfulTransfer: Date | null = null;
-
-  // Module instances
   private configManager: ConfigManager;
-  private pluginCleanup: PluginCleanup;
   private dataPathEmitter: DataPathEmitter;
-  private trackLogger: TrackLogger | null = null;
-  private trackSender: TrackSender | null = null;
+  private uploader: TrackUploader | null = null;
   private healthMonitor: HealthMonitor | null = null;
-  private trackMigration: TrackMigration | null = null;
+  private cron: CronJob | null = null;
+  private firstPass: ReturnType<typeof setTimeout> | null = null;
+  private passRunning = false;
+
+  private lastSavepoint: Date | null = null;
+  private lastSuccessfulTransfer: Date | null = null;
+  // An upload error outranks a GNSS warning, so a healthy GNSS check cannot
+  // clear a message about the Tracks plugin or the NFL API.
+  private uploadError: string | null = null;
+  private gnssError: string | null = null;
 
   constructor(app: SignalKApp) {
     this.app = app;
     this.configManager = new ConfigManager(app);
-    this.pluginCleanup = new PluginCleanup(app);
     this.dataPathEmitter = new DataPathEmitter(app, this.pluginId);
   }
 
-  /**
-   * Get plugin schema
-   */
   getSchema(): ConfigSchema {
     return ConfigManager.getSchema(this.pluginName);
   }
 
-  /**
-   * Get plugin object for SignalK
-   */
   getPluginObject(): Plugin {
     return {
       id: this.pluginId,
       name: this.pluginName,
-      description: 'SignalK track logger to noforeignland.com',
+      description: 'Uploads the track recorded by the Tracks plugin to noforeignland.com',
       schema: this.getSchema(),
       start: this.start.bind(this),
       stop: this.stop.bind(this),
     };
   }
 
-  /**
-   * Start the plugin
-   */
   async start(config: PluginConfig = {}): Promise<void> {
+    // The server restarts a plugin by calling stop() and start() on the same
+    // instance; a message from the previous configuration must not outlive it.
+    this.uploadError = null;
+    this.gnssError = null;
     try {
-      // 1. Migrate old config structure if needed
-      const { options: migratedOptions, migrated } =
+      const { options: migrated, migrated: wasMigrated } =
         await this.configManager.migrateOldConfig(config);
+      const options = this.configManager.randomizeCron(this.configManager.flattenConfig(migrated));
 
-      // 2. Flatten config and apply defaults
-      this.options = this.configManager.flattenConfig(migratedOptions);
-
-      // 3. Validate API key
       try {
-        this.configManager.validateApiKey(this.options);
+        this.configManager.validateApiKey(options);
       } catch (err) {
-        const error = err as Error;
-        this.app.debug(error.message);
-        this.setPluginError(error.message);
-        this.stop();
+        this.fail(err instanceof Error ? err.message : String(err));
+        return;
+      }
+      if (!this.app.getTrackApi) {
+        this.fail(new TrackApiUnsupportedError().message);
         return;
       }
 
-      // 4. Resolve track directory path
-      const dataDirPath = this.app.getDataDirPath();
-      this.options.trackDir = this.configManager.resolveTrackDir(this.options, dataDirPath);
+      const dataDir = this.app.getDataDirPath();
+      createDir(dataDir, this.app);
+      const store = new UploadStateStore(dataDir);
+      // The configuration as 1.x saved it still names its track directory.
+      const pending = new PendingFile(legacyPendingFile(config, dataDir));
+      const source = new TrackSource(this.app);
+      const sender = new TrackSender(this.app, options);
 
-      // 5. Create track directory
-      try {
-        createDir(this.options.trackDir, this.app);
-      } catch (err) {
-        const error = err as Error;
-        this.setPluginError(error.message);
-        this.stop();
-        return;
-      }
+      const deps: UploaderDeps = {
+        fixesAfter: (afterMs) => source.fixesAfter(afterMs),
+        sendFixes: (fixes) => sender.sendFixes(fixes),
+        loadState: () => store.load(),
+        saveState: (state) => store.save(state),
+        readPending: () => pending.read(),
+        replacePending: (remaining) => pending.replace(remaining),
+        currentFix: () => readSelfPosition(this.app)?.fix ?? null,
+        debug: (...args) => {
+          this.app.debug(...args);
+        },
+      };
+      this.uploader = new TrackUploader(options, deps);
 
-      // 6. Cleanup old plugin versions (with callback handling)
-      this.pluginCleanup
-        .cleanup()
-        .then((result) => {
-          if (result === 'all_removed') {
-            this.app.debug('Old plugins successfully cleaned up');
-            // Update status if plugin started successfully
-            if (this.options.boatApiKey) {
-              this.setPluginStatus('Started (old plugins cleaned up)');
-            }
-          }
-        })
-        .catch((err: unknown) => {
-          const error = err instanceof Error ? err : new Error(String(err));
-          this.app.debug('Error in cleanupOldPlugin:', error.message);
-        });
-
-      // 7. Migrate old track files
-      this.trackMigration = new TrackMigration(this.app, this.options.trackDir);
-      await this.trackMigration.migrate();
-
-      // 8. Initialize modules
-      this.trackLogger = new TrackLogger(this.app, this.options, this.options.trackDir);
-      this.trackSender = new TrackSender(this.app, this.options, this.options.trackDir);
-      this.healthMonitor = new HealthMonitor(this.app, this.options);
-
-      // 9. Update startup time and randomize CRON
-      this.upSince = Date.now();
-      this.options = this.configManager.randomizeCron(this.options);
-
-      this.app.debug('Setting CRON to', this.options.apiCron);
-      this.app.debug('trackFrequency is set to', this.options.trackFrequency, 'seconds');
-      this.app.debug('track logger started, now logging to', this.options.trackDir);
-      this.app.debug('maxVelocity filter set to', this.options.maxVelocity, 'm/s');
-
-      // 10. Start logging
-      this.trackLogger.startLogging((lastPosition: SavedPosition) => {
-        this.handleSavePoint(lastPosition);
-      });
-
-      // 11. Start CRON job for sending data
-      this.cron = new CronJob(this.options.apiCron, () => {
-        void this.interval();
+      this.app.debug('Upload schedule:', options.apiCron);
+      this.cron = new CronJob(options.apiCron, () => {
+        void this.runPass();
       });
       this.cron.start();
+      this.firstPass = setTimeout(() => {
+        void this.runPass();
+      }, FIRST_PASS_DELAY_MS);
 
-      // 12. Start health monitoring
+      this.healthMonitor = new HealthMonitor(this.app, options);
       this.healthMonitor.start(
-        () => this.trackLogger?.getLastPositionReceived() ?? null,
-        () => this.trackLogger?.getAutoSelectedSource() ?? null,
-        (errorMsg: string) => {
-          this.setPluginError(errorMsg);
+        () => readSelfPosition(this.app)?.fix.time ?? null,
+        () => readSelfPosition(this.app)?.source ?? null,
+        (message) => {
+          this.gnssError = message;
+          this.refreshStatus();
         },
         () => {
-          this.handleHealthy();
+          this.gnssError = null;
+          this.refreshStatus();
         }
       );
 
-      // 13. Set plugin status
-      this.setPluginStatus(`Started${migrated ? ' (config migrated)' : ''}`);
+      this.app.setPluginStatus(`Started${wasMigrated ? ' (config migrated)' : ''}`);
     } catch (err) {
-      const error = err as Error;
-      this.app.debug('Error during plugin start:', error.message);
-      this.setPluginError(`Failed to start: ${error.message}`);
-      this.stop();
+      const message = err instanceof Error ? err.message : String(err);
+      this.app.debug('Error during plugin start:', message);
+      this.fail(`Failed to start: ${message}`);
     }
   }
 
-  /**
-   * Handle savepoint event
-   */
-  handleSavePoint(lastPosition: SavedPosition): void {
-    this.dataPathEmitter.emitSavepoint();
-
-    // Update plugin status
-    const activeSource =
-      this.options.filterSource || this.trackLogger?.getAutoSelectedSource() || '';
-    const sourcePrefix = activeSource ? `${activeSource} | ` : '';
-    const saveTime = new Date(lastPosition.currentTime).toISOString();
-    const transferTime = this.lastSuccessfulTransfer
-      ? this.lastSuccessfulTransfer.toISOString()
-      : 'None since start';
-
-    this.setPluginStatus(`Save: ${saveTime} | Transfer: ${transferTime} | ${sourcePrefix}`);
-  }
-
-  /**
-   * Handle healthy status from health monitor
-   */
-  handleHealthy(): void {
-    // Clear error if position health is OK
-    if (this.dataPathEmitter.getError()) {
-      const lastPosition = this.trackLogger?.getLastPosition() ?? null;
-      const activeSource =
-        this.options.filterSource || this.trackLogger?.getAutoSelectedSource() || '';
-      const sourcePrefix = activeSource ? `${activeSource} | ` : '';
-      const saveTime = lastPosition
-        ? new Date(lastPosition.currentTime).toISOString()
-        : 'None since start';
-      const transferTime = this.lastSuccessfulTransfer
-        ? this.lastSuccessfulTransfer.toISOString()
-        : 'None since start';
-
-      this.setPluginStatus(`Save: ${saveTime} | Transfer: ${transferTime} | ${sourcePrefix}`);
+  async runPass(): Promise<void> {
+    const uploader = this.uploader;
+    if (!uploader || this.passRunning) {
+      return;
     }
-  }
-
-  /**
-   * CRON interval - check and send data
-   */
-  async interval(): Promise<void> {
-    if (!this.trackSender || !this.trackLogger) return;
-
+    this.passRunning = true;
+    let outcome: { result: PassResult } | { error: unknown };
     try {
-      // Check if boat is moving
-      const lastPosition = this.trackLogger.getLastPosition();
-      const boatMoving = this.trackSender.isBoatMoving(lastPosition, this.upSince ?? Date.now());
-      if (!boatMoving) {
-        return;
+      outcome = { result: await uploader.run() };
+    } catch (error) {
+      outcome = { error };
+    } finally {
+      this.passRunning = false;
+    }
+
+    // Stopped or restarted while the pass ran: what NFL accepted is already
+    // in the upload state, but the status belongs to whatever runs now.
+    if (uploader !== this.uploader) {
+      return;
+    }
+
+    if ('result' in outcome) {
+      const { result } = outcome;
+      if (result.newestRecorded) {
+        this.lastSavepoint = new Date(result.newestRecorded.time);
+        this.dataPathEmitter.emitSavepoint(this.lastSavepoint);
       }
-
-      // Check if we have track data
-      const hasTrack = await this.trackSender.hasTrackData();
-      if (!hasTrack) {
-        return;
-      }
-
-      // Send track data (has built-in retry logic)
-      const success = await this.trackSender.sendTrack();
-
-      if (success) {
+      if (result.uploaded > 0) {
         this.lastSuccessfulTransfer = new Date();
         this.dataPathEmitter.emitApiTransfer(this.lastSuccessfulTransfer);
-
-        // Update status
-        const activeSource =
-          this.options.filterSource || this.trackLogger.getAutoSelectedSource() || '';
-        const sourcePrefix = activeSource ? `${activeSource} | ` : '';
-        const saveTime = lastPosition
-          ? new Date(lastPosition.currentTime).toISOString()
-          : 'None since start';
-        const transferTime = this.lastSuccessfulTransfer.toISOString();
-
-        this.setPluginStatus(`Save: ${saveTime} | Transfer: ${transferTime} | ${sourcePrefix}`);
       }
-    } catch (err) {
-      const error = err as Error;
-      this.app.debug('Error during send interval:', error.message);
-      this.setPluginError(`Failed to send track - ${error.message}`);
+      this.uploadError = null;
+    } else {
+      const { error } = outcome;
+      const message = error instanceof Error ? error.message : String(error);
+      this.app.debug('Upload pass failed:', message);
+      this.uploadError =
+        error instanceof TracksNotRunningError || error instanceof TrackApiUnsupportedError
+          ? message
+          : `Failed to send track - ${message}`;
     }
+    this.refreshStatus();
   }
 
-  /**
-   * Stop the plugin
-   */
   stop(): void {
     this.app.debug('plugin stopped');
+    this.teardown();
+    this.app.setPluginStatus('Plugin stopped');
+  }
 
-    // Stop CRON job
+  private teardown(): void {
     if (this.cron) {
       void this.cron.stop();
       this.cron = null;
     }
-
-    // Stop track logger
-    if (this.trackLogger) {
-      this.trackLogger.stop();
+    if (this.firstPass) {
+      clearTimeout(this.firstPass);
+      this.firstPass = null;
     }
-
-    // Stop health monitor
-    if (this.healthMonitor) {
-      this.healthMonitor.stop();
-    }
-
-    this.app.setPluginStatus('Plugin stopped');
+    this.healthMonitor?.stop();
+    this.healthMonitor = null;
+    this.uploader = null;
   }
 
-  /**
-   * Set plugin status and update data paths
-   */
-  setPluginStatus(status: string): void {
-    this.dataPathEmitter.clearError();
-    this.app.setPluginStatus(status);
-
-    const lastPosition = this.trackLogger?.getLastPosition() ?? null;
-    const autoSelectedSource = this.trackLogger?.getAutoSelectedSource() ?? null;
-
-    this.dataPathEmitter.updateStatusPaths(
-      this.options,
-      lastPosition,
-      this.lastSuccessfulTransfer,
-      autoSelectedSource
-    );
+  private fail(message: string): void {
+    this.teardown();
+    this.uploadError = message;
+    this.refreshStatus();
   }
 
-  /**
-   * Set plugin error and update data paths
-   */
-  setPluginError(error: string): void {
-    this.dataPathEmitter.setError(error);
-    this.app.setPluginError(error);
-
-    const lastPosition = this.trackLogger?.getLastPosition() ?? null;
-    const autoSelectedSource = this.trackLogger?.getAutoSelectedSource() ?? null;
-
-    this.dataPathEmitter.updateStatusPaths(
-      this.options,
-      lastPosition,
-      this.lastSuccessfulTransfer,
-      autoSelectedSource
-    );
+  private refreshStatus(): void {
+    const source = readSelfPosition(this.app)?.source ?? null;
+    const error = this.uploadError ?? this.gnssError;
+    if (error) {
+      this.dataPathEmitter.setError(error);
+      this.app.setPluginError(error);
+    } else {
+      this.dataPathEmitter.clearError();
+      const save = this.lastSavepoint?.toISOString() ?? 'None since start';
+      const transfer = this.lastSuccessfulTransfer?.toISOString() ?? 'None since start';
+      this.app.setPluginStatus(
+        `Save: ${save} | Transfer: ${transfer}${source ? ` | ${source}` : ''}`
+      );
+    }
+    this.dataPathEmitter.updateStatusPaths(this.lastSavepoint, this.lastSuccessfulTransfer, source);
   }
 }
 

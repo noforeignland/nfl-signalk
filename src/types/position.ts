@@ -7,21 +7,13 @@ export interface Position {
 }
 
 /**
- * Track point as stored in JSONL files
+ * One recorded position of the own vessel.
  */
-export interface TrackPoint {
-  lat: number;
-  lon: number;
-  t: string; // ISO timestamp
-}
-
-/**
- * Position with metadata for internal tracking
- */
-export interface SavedPosition {
-  pos: Position;
-  timestamp: string;
-  currentTime: number; // ms since epoch
+export interface Fix {
+  /** Recording time, ms since epoch */
+  time: number;
+  latitude: number;
+  longitude: number;
 }
 
 /**

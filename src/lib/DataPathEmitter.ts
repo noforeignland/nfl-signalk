@@ -2,7 +2,7 @@
  * Emits Signal K delta messages for plugin data paths
  */
 
-import type { SignalKApp, FlatConfig, SavedPosition, Delta } from '../types';
+import type { SignalKApp, Delta } from '../types';
 
 export class DataPathEmitter {
   private app: SignalKApp;
@@ -44,18 +44,15 @@ export class DataPathEmitter {
    * Update status paths with current state
    */
   updateStatusPaths(
-    options: FlatConfig,
-    lastPosition: SavedPosition | null,
+    lastSavepoint: Date | null,
     lastSuccessfulTransfer: Date | null,
-    autoSelectedSource: string | null
+    positionSource: string | null
   ): void {
     const hasError = this.currentError !== null;
 
     if (!hasError) {
-      const activeSource = options.filterSource || autoSelectedSource || '';
-      const saveTime = lastPosition
-        ? new Date(lastPosition.currentTime).toLocaleTimeString()
-        : 'None since start';
+      const activeSource = positionSource ?? '';
+      const saveTime = lastSavepoint ? lastSavepoint.toLocaleTimeString() : 'None since start';
       const transferTime = lastSuccessfulTransfer
         ? lastSuccessfulTransfer.toLocaleTimeString()
         : 'None since start';
@@ -73,10 +70,9 @@ export class DataPathEmitter {
   /**
    * Emit savepoint deltas
    */
-  emitSavepoint(): void {
-    const now = new Date();
-    this.emitDelta('noforeignland.savepoint', now.toISOString());
-    this.emitDelta('noforeignland.savepoint_local', now.toLocaleString());
+  emitSavepoint(recordedAt: Date): void {
+    this.emitDelta('noforeignland.savepoint', recordedAt.toISOString());
+    this.emitDelta('noforeignland.savepoint_local', recordedAt.toLocaleString());
   }
 
   /**
