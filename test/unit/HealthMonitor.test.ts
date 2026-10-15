@@ -18,12 +18,9 @@ function makeConfig(overrides: Partial<FlatConfig> = {}): FlatConfig {
     minSpeed: 0,
     sendWhileMoving: true,
     ping_api_every_24h: true,
-    trackDir: '/tmp/x',
-    keepFiles: false,
     trackFrequency: 60,
     apiCron: '*/10 * * * *',
     apiTimeout: 30,
-    maxVelocity: 50,
     ...overrides,
   };
 }
@@ -101,27 +98,16 @@ describe('HealthMonitor.performHealthCheck', () => {
     expect(onError).toHaveBeenCalledWith(expect.stringContaining('No GNSS position data'));
   });
 
-  it('mentions the filtered source in the error when filterSource is set', () => {
+  it('names the position source in a stale-position error', () => {
     const app = createMockApp();
-    const monitor = new HealthMonitor(app, makeConfig({ filterSource: 'can0.2' }));
+    const monitor = new HealthMonitor(app, makeConfig());
     const onError = vi.fn();
     const onHealthy = vi.fn();
 
-    monitor.performHealthCheck(NOW - 1_000_000, null, onError, onHealthy);
+    monitor.performHealthCheck(NOW - 1_000_000, 'can0.2', onError, onHealthy);
 
     expect(onError).toHaveBeenCalledWith(expect.stringContaining("source 'can0.2'"));
     expect(onHealthy).not.toHaveBeenCalled();
-  });
-
-  it('null-source error mentions the filtered source', () => {
-    const app = createMockApp();
-    const monitor = new HealthMonitor(app, makeConfig({ filterSource: 'can0.2' }));
-    const onError = vi.fn();
-    const onHealthy = vi.fn();
-
-    monitor.performHealthCheck(null, null, onError, onHealthy);
-
-    expect(onError).toHaveBeenCalledWith(expect.stringContaining("'can0.2'"));
   });
 });
 
@@ -134,16 +120,6 @@ describe('HealthMonitor.performInitialCheck', () => {
     monitor.performInitialCheck(null, null, onError);
 
     expect(onError).toHaveBeenCalledWith(expect.stringContaining('after 2 minutes'));
-  });
-
-  it('mentions the filtered source on initial-check failure', () => {
-    const app = createMockApp();
-    const monitor = new HealthMonitor(app, makeConfig({ filterSource: 'can0.2' }));
-    const onError = vi.fn();
-
-    monitor.performInitialCheck(null, null, onError);
-
-    expect(onError).toHaveBeenCalledWith(expect.stringContaining("'can0.2'"));
   });
 
   it('does nothing when a position has been received', () => {

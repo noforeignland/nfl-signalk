@@ -6,37 +6,39 @@ This file is the single source of truth for agent behaviour. `CLAUDE.md` is a sy
 
 ## What this project is
 
-`@noforeignland/signalk-to-noforeignland` is a [Signal K](https://signalk.org/) server plugin that logs the boat's GNSS position and uploads tracks to **noforeignland.com**. It runs inside a Signal K server (typically `~/.signalk` on Linux, or `/data/conf/signalk` on a Victron Cerbo GX).
+`@noforeignland/signalk-to-noforeignland` is a [Signal K](https://signalk.org/) server plugin that uploads the own vessel's track to **noforeignland.com**. It records nothing itself: the [Tracks](https://github.com/SignalK/tracks) plugin records the track, and this plugin reads it through the server's Track API (`app.getTrackApi('tracks')`, signalk-server ≥ 2.33) and uploads what is new since its last upload. It runs inside a Signal K server (typically `~/.signalk` on Linux, or `/data/conf/signalk` on a Victron Cerbo GX).
 
 The plugin is published to npm as `@noforeignland/signalk-to-noforeignland` and installed from the Signal K Appstore.
 
 ## Stack
 
 - **Language:** TypeScript 6.0 (held below 6.1 until typescript-eslint supports newer), `strict` + `strictTypeChecked` ESLint config (no `any`, no unsafe casts, no floating promises).
-- **Runtime:** Node.js ≥ 22 (CI matrix: 22.x, 24.x). An ES module (`"type": "module"`); Signal K server loads ESM plugins since 2.14.
+- **Runtime:** Node.js ≥ 22.5, as the Tracks plugin (`node:sqlite`) needs (CI matrix: 22.x, 24.x). An ES module (`"type": "module"`). Needs signalk-server ≥ 2.33 for the Track API and the Tracks plugin, declared in `package.json` as `signalk.requires` (the App Store's mandatory-companion field, not an npm dependency).
 - **Build:** `vite build` bundles `src/` into one ES module, `dist/index.js`, with node built-ins and runtime dependencies left external. `vite-plugin-checker` runs `tsc` and fails the build on a type error; `vite-plugin-dts` writes the declarations. Config is `vite.config.ts`. `dist/` is the only thing published to npm.
 - **Tests:** Vitest, configured in the `test` block of `vite.config.ts`. Coverage (`@vitest/coverage-v8`, 80 % thresholds) counts the source files the tests load. Vitest does not typecheck, so `npm run typecheck` also checks `test/` through `tsconfig.eslint.json`.
 - **Lint/format:** ESLint flat config (`eslint.config.mjs`) + Prettier (`.prettierrc`).
-- **Signal K types:** `@signalk/server-api`.
+- **Signal K types:** declared locally in `src/types/` (`signalk.ts`, `tracks.ts`), mirroring `@signalk/server-api`. Importing `@signalk/server-api/tracks` pulls in express and ws typings this plugin does not install.
 - **Config schema:** `typebox` 1.x (the unscoped package; `@sinclair/typebox` is the separate 0.34 line). `src/lib/configSchema.ts` defines the settings form, and through `Static` the type of the stored configuration. `test/unit/__snapshots__/config-schema.json` pins the schema as emitted. A change there is a change to the form users see, so update it on purpose (`npx vitest run -u`) and review the diff.
 
 ## Layout
 
 ```
 src/
-  index.ts              # Plugin entry — exports SignalK plugin object, owns lifecycle
+  index.ts              # Plugin entry — lifecycle, cron, status
   lib/                  # One responsibility per module
     ConfigManager.ts    # Config migration, flattening with defaults, CRON randomisation
     configSchema.ts     # typebox schema of the settings form, CONFIG_DEFAULTS
-    TrackLogger.ts      # Subscribes to navigation.position, writes pending.jsonl
-    TrackSender.ts      # Reads pending.jsonl, POSTs to NFL API with retry
+    TrackUploader.ts    # One upload pass: drain 1.x pending, read Tracks, filter, upload in chunks
+    TrackSource.ts      # Reads the own vessel's fixes from the Track API, checks the answer
+    TrackSender.ts      # POSTs fixes to the NFL API with retry
+    UploadState.ts      # upload-state.json: cursor, last fix looked at, last fix uploaded
+    PendingDrain.ts     # Finds and reads the pending.jsonl 1.x left behind
+    SelfPosition.ts     # navigation.position as the server holds it (typebox-checked)
     HealthMonitor.ts    # Position-freshness checks, error/healthy callbacks
     DataPathEmitter.ts  # Emits noforeignland.* deltas for dashboards
-    PluginCleanup.ts    # Runtime removal of deprecated predecessor plugins
-    TrackMigration.ts   # Migrates legacy track filenames into pending/sent.jsonl
     DirectoryUtils.ts   # Mkdir + permission checks with friendly errors
-  types/                # Shared types (signalk.ts, config.ts, position.ts, api.ts)
-  utils/                # validation.ts, geo.ts (equirectangular distance, m/s↔kts)
+  types/                # Shared types (signalk.ts, tracks.ts, config.ts, position.ts, api.ts)
+  utils/                # trackFilter.ts (which fixes to upload), validation.ts, geo.ts, errors.ts
 test/
   unit/                 # Vitest tests
   mocks/signalk-app.ts  # Minimal SignalKApp double for tests
@@ -58,7 +60,7 @@ export default (app: SignalKApp): Plugin => ({ id, name, description, schema, st
 `start(config)` is `async` and must be idempotent under restart. `stop()` must tear down everything started in `start()`:
 
 - the CRON job (`this.cron?.stop()`),
-- the subscription manager unsubscribes returned by `TrackLogger`,
+- the delayed first upload pass,
 - the `HealthMonitor` timers.
 
 Anything that leaks across a stop/start cycle will corrupt status reporting on the next config save.
@@ -67,13 +69,13 @@ Anything that leaks across a stop/start cycle will corrupt status reporting on t
 
 On disk (under the plugin's data directory):
 
-- `pending.jsonl` — track points not yet uploaded. JSONL: `{"lat":…,"lon":…,"t":"ISO8601"}` per line.
-- `sent.jsonl` — archived points (only if "keep track files on disk" is enabled).
+- `upload-state.json` — where the upload stands: `cursor` (fixes recorded up to then are dealt with), `previous` (the last fix looked at) and `uploaded` (the last fix sent). Written after every accepted chunk.
+- `nfl-track/pending.jsonl` — left by 1.x: fixes it had not uploaded. Uploaded once on the first 2.x start, then removed. `sent.jsonl` archives stay untouched; the README explains how to import one into the Tracks plugin.
 
 Signal K deltas emitted (consumed by Node-RED, KIP, dashboards):
 
 ```
-noforeignland.savepoint              ISO8601 of last point saved
+noforeignland.savepoint              ISO8601 time of the newest fix the Tracks plugin recorded
 noforeignland.savepoint_local        Locale string of the same
 noforeignland.sent_to_api            ISO8601 of last successful upload
 noforeignland.sent_to_api_local      Locale string of the same
@@ -131,8 +133,10 @@ npm run validate          typecheck + lint + test:coverage  ← the full chain
 - **The published code is one file, `dist/index.js`, one level below the package root.** Anything that finds a file relative to its own module (`import.meta.url`) runs from there, not from `src/lib/`. That is why the plugin version reaches the code as `__PLUGIN_VERSION__`, set by `define` in `vite.config.ts`, rather than by reading `package.json`.
 - **`composite: true` in `tsconfig.json` breaks the build** when combined with `tsc --noEmit` in `typecheck`. Don't add it back.
 - **Position validation rejects coordinates near `(0, 0)`** — this is intentional (catches uninitialised GNSS). Don't "fix" it.
-- **GNSS source auto-selection is sticky.** Once a source is chosen, `TrackLogger` only switches if the current source goes stale (>5 min). Changing this risks track jumps when multiple GNSS devices are present.
-- **Velocity outlier filter** (`MAX_VELOCITY`, default 50 m/s) catches GPS jumps. Aircraft users raise it; boats should never need to lower it.
+- **NFL does not deduplicate.** Every point it is sent is stored, and a resent stretch draws a fan of lines on the map. The cursor in `upload-state.json` only moves after NFL accepted a chunk, and a first start (or an unreadable state) begins at the last 1.x pending fix or at now, never earlier. Don't add a path that can move it backwards.
+- **`getTracks` called in-process skips the server's HTTP normalisation.** Without `contexts` it returns every vessel, not the own one; `duration` and `P1D` are not resolved. Always pass `contexts: ['vessels.self']` and a `from` instant.
+- **Speed is measured between consecutive recorded fixes**, not from the last uploaded one: after a week at anchor, the average speed since the anchorage stays below any threshold long after the boat has left.
+- **Source selection and glitch filtering belong to the server and the Tracks plugin**: the server's source priority for `navigation.position`, and the Tracks plugin's `maxSpeedKnots`. This plugin has no settings for either any more.
 - **API retry policy:** retry on network errors and 5xx only. 4xx (especially 401 "invalid BOAT API key") must surface to the user immediately — don't make them wait through three retries to see a config error.
 
 ## Where to look

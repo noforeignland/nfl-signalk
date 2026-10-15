@@ -4,21 +4,16 @@
  */
 
 import { Type, type Static, type TObject } from 'typebox';
-import { DEFAULT_MAX_VELOCITY } from '../utils/validation';
 
 /**
  * Values for settings the user has not set. The form shows them as defaults
- * (trackDir only in its description) and flattenConfig applies them, so the
- * two cannot disagree.
+ * and flattenConfig applies them, so the two cannot disagree.
  */
 export const CONFIG_DEFAULTS = {
   minMove: 80,
   minSpeed: 1.5,
   sendWhileMoving: true,
   ping_api_every_24h: true,
-  maxVelocity: DEFAULT_MAX_VELOCITY,
-  trackDir: 'nfl-track',
-  keepFiles: false,
   trackFrequency: 60,
   apiCron: '*/10 * * * *',
   apiTimeout: 30,
@@ -47,17 +42,17 @@ const groups = {
       {
         minMove: Type.Optional(
           Type.Number({
-            title: 'Minimum boat move to log in meters',
+            title: 'Minimum boat move to upload in meters',
             description:
-              'To keep file sizes small we only log positions if a move larger than this size (if set to 0 will log every move)',
+              'A position is only sent to noforeignland.com when the boat has moved at least this far since the last one sent (0 sends every position)',
             default: CONFIG_DEFAULTS.minMove,
           })
         ),
         minSpeed: Type.Optional(
           Type.Number({
-            title: 'Minimum boat speed to log in knots',
+            title: 'Minimum boat speed to upload in knots',
             description:
-              'To keep file sizes small we only log positions if boat speed goes above this value to minimize recording position on anchor or mooring (if set to 0 will log every move)',
+              'A position is only sent when the boat was moving at least this fast as it was recorded, which leaves out swinging at anchor or on a mooring (0 disables the check)',
             default: CONFIG_DEFAULTS.minSpeed,
           })
         ),
@@ -85,45 +80,11 @@ const groups = {
   expert: Type.Optional(
     Type.Object(
       {
-        filterSource: Type.Optional(
-          Type.String({
-            title: 'Position source device',
-            description:
-              'EMPTY DEFAULT IS FINE - Set this value to the name of a source if you want to only use the position given by that source.',
-          })
-        ),
-        maxVelocity: Type.Optional(
-          Type.Number({
-            title: 'Maximum velocity (m/s)',
-            description:
-              'Reject positions implying faster movement than this (catches GPS outliers). Default: 50 m/s ≈ 97 knots.',
-            default: CONFIG_DEFAULTS.maxVelocity,
-            minimum: 10,
-            maximum: 200,
-          })
-        ),
-        // No form default: an empty field means the default directory, which
-        // the description names.
-        trackDir: Type.Optional(
-          Type.String({
-            title: 'Directory to cache tracks',
-            description:
-              'EMPTY DEFAULT IS FINE - Path to store track data. Relative paths are stored in plugin data directory. Absolute paths can point anywhere.\nDefault: nfl-track',
-          })
-        ),
-        keepFiles: Type.Optional(
-          Type.Boolean({
-            title: 'Keep track files on disk',
-            description:
-              'If you have a lot of hard drive space you can keep the track files for logging purposes.',
-            default: CONFIG_DEFAULTS.keepFiles,
-          })
-        ),
         trackFrequency: Type.Optional(
           Type.Integer({
-            title: 'Position tracking frequency in seconds',
+            title: 'Minimum time between uploaded positions in seconds',
             description:
-              'To keep file sizes small we only log positions once in a while (unless you set this value to 0)',
+              'The Tracks plugin records a position every minute by default. Uploaded positions are kept at least this far apart (0 sends every recorded position)',
             default: CONFIG_DEFAULTS.trackFrequency,
           })
         ),

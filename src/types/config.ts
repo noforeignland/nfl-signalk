@@ -31,13 +31,9 @@ export interface FlatConfig {
   minSpeed: number;
   sendWhileMoving: boolean;
   ping_api_every_24h: boolean;
-  filterSource?: string;
-  trackDir: string;
-  keepFiles: boolean;
   trackFrequency: number;
   apiCron: string;
   apiTimeout: number;
-  maxVelocity: number;
 }
 
 export type { ConfigSchema } from '../lib/configSchema';

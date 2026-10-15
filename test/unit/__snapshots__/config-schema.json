@@ -17,14 +17,14 @@
       "properties": {
         "minMove": {
           "type": "number",
-          "title": "Minimum boat move to log in meters",
-          "description": "To keep file sizes small we only log positions if a move larger than this size (if set to 0 will log every move)",
+          "title": "Minimum boat move to upload in meters",
+          "description": "A position is only sent to noforeignland.com when the boat has moved at least this far since the last one sent (0 sends every position)",
           "default": 80
         },
         "minSpeed": {
           "type": "number",
-          "title": "Minimum boat speed to log in knots",
-          "description": "To keep file sizes small we only log positions if boat speed goes above this value to minimize recording position on anchor or mooring (if set to 0 will log every move)",
+          "title": "Minimum boat speed to upload in knots",
+          "description": "A position is only sent when the boat was moving at least this fast as it was recorded, which leaves out swinging at anchor or on a mooring (0 disables the check)",
           "default": 1.5
         },
         "sendWhileMoving": {
@@ -45,34 +45,10 @@
     "expert": {
       "type": "object",
       "properties": {
-        "filterSource": {
-          "type": "string",
-          "title": "Position source device",
-          "description": "EMPTY DEFAULT IS FINE - Set this value to the name of a source if you want to only use the position given by that source."
-        },
-        "maxVelocity": {
-          "type": "number",
-          "title": "Maximum velocity (m/s)",
-          "description": "Reject positions implying faster movement than this (catches GPS outliers). Default: 50 m/s ≈ 97 knots.",
-          "default": 50,
-          "minimum": 10,
-          "maximum": 200
-        },
-        "trackDir": {
-          "type": "string",
-          "title": "Directory to cache tracks",
-          "description": "EMPTY DEFAULT IS FINE - Path to store track data. Relative paths are stored in plugin data directory. Absolute paths can point anywhere.\nDefault: nfl-track"
-        },
-        "keepFiles": {
-          "type": "boolean",
-          "title": "Keep track files on disk",
-          "description": "If you have a lot of hard drive space you can keep the track files for logging purposes.",
-          "default": false
-        },
         "trackFrequency": {
           "type": "integer",
-          "title": "Position tracking frequency in seconds",
-          "description": "To keep file sizes small we only log positions once in a while (unless you set this value to 0)",
+          "title": "Minimum time between uploaded positions in seconds",
+          "description": "The Tracks plugin records a position every minute by default. Uploaded positions are kept at least this far apart (0 sends every recorded position)",
           "default": 60
         },
         "apiCron": {
