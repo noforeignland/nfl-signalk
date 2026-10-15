@@ -24,9 +24,10 @@ updates:
           - minor
           - patch
     ignore:
-      # typescript-eslint does not support TypeScript 7.0, so lint would fail.
+      # typescript-eslint supports TypeScript below 6.1, so a newer one fails
+      # lint. Raise this when its peer range does.
       - dependency-name: typescript
-        versions: ['7.0.x']
+        versions: ['>=6.1']
       # Keep @types/node on the lowest supported runtime (engines.node,
       # @tsconfig/node22) so TypeScript rejects Node APIs that don't exist there.
       - dependency-name: '@types/node'
