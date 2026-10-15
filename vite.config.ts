@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { builtinModules } from 'node:module';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
 import dts from 'vite-plugin-dts';
@@ -9,13 +10,23 @@ const pkg = JSON.parse(readFileSync(resolve(import.meta.dirname, 'package.json')
   dependencies: Record<string, string>;
 };
 
+const builtins = new Set(builtinModules);
+const dependencies = Object.keys(pkg.dependencies);
+
 // The plugin is loaded by the Signal K server, not shipped to a browser, so
 // node built-ins and the runtime dependencies stay external and resolve from
-// node_modules at runtime.
+// node_modules at runtime. Vite builds for the browser by default and would
+// otherwise replace a built-in imported without the `node:` prefix with a
+// stub that only fails when the plugin runs.
+const isExternal = (id: string): boolean =>
+  id.startsWith('node:') ||
+  builtins.has(id) ||
+  dependencies.some((dep) => id === dep || id.startsWith(`${dep}/`));
+
 export default defineConfig({
-  // NFL logs the plugin version with every upload. The source cannot read
-  // package.json relative to itself: the bundle sits one directory deeper
-  // than the source module that reads it.
+  // NFL logs the plugin version with every upload. A path to package.json
+  // relative to the module would differ between the source (src/lib/) and
+  // the bundle (dist/index.js), so the version is inlined at build time.
   define: {
     __PLUGIN_VERSION__: JSON.stringify(pkg.version),
   },
@@ -27,7 +38,7 @@ export default defineConfig({
       fileName: 'index',
     },
     rolldownOptions: {
-      external: [/^node:/, ...Object.keys(pkg.dependencies)],
+      external: isExternal,
     },
     sourcemap: true,
     minify: false,
