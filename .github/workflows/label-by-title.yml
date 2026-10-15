@@ -1,0 +1,73 @@
+name: label-by-title
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened]
+
+permissions: {}
+
+jobs:
+  # .github/release.yml sorts the release notes by label, and a pull request
+  # opened from the command line carries none. The label follows the title's
+  # conventional-commit type. Only the title is read, with no checkout and
+  # nothing from the pull request run here, which is what makes
+  # pull_request_target safe to use and what lets a pull request from a fork
+  # be labelled.
+  #
+  # `edited` also fires for a body or base-branch edit; those leave the labels
+  # alone, so a label set by hand stays until the title changes.
+  label:
+    if: ${{ github.event.action != 'edited' || github.event.changes.title }}
+    # One run per pull request at a time: two overlapping runs would each read
+    # the labels, then each edit, and could leave two managed labels behind.
+    # Set on the job, after the condition above, so that a body edit, which
+    # skips the job, cannot cancel a title edit's run.
+    concurrency:
+      group: label-by-title-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # The labels this workflow owns: one of them at a time, so a title
+          # edited from feat to fix swaps the label rather than adding one.
+          # A type not listed gets none of them and lands under Other.
+          managed="enhancement bug documentation skip-changelog"
+          conventional='^([a-z]+)(\([^)]*\))?!?: '
+          type=""
+          scope=""
+          if [[ "$TITLE" =~ $conventional ]]; then
+            type="${BASH_REMATCH[1]}"
+            scope="${BASH_REMATCH[2]}"
+          fi
+          case "$type" in
+            feat|perf) wanted=enhancement ;;
+            fix) wanted=bug ;;
+            docs) wanted=documentation ;;
+            # A runtime dependency bump makes a release (the gate in
+            # release-please.yml), so it stays in that release's notes,
+            # under the `dependencies` label Dependabot sets itself.
+            build) if [ "$scope" = "(deps)" ]; then wanted=""; else wanted=skip-changelog; fi ;;
+            ci|test|chore|refactor|style) wanted=skip-changelog ;;
+            *) wanted="" ;;
+          esac
+          current=$(gh pr view "$NUMBER" --repo "$REPO" --json labels --jq '[.labels[].name] | join(" ")')
+          args=()
+          for label in $managed; do
+            case " $current " in *" $label "*) has=1 ;; *) has=0 ;; esac
+            if [ "$label" = "$wanted" ] && [ "$has" = 0 ]; then args+=(--add-label "$label"); fi
+            if [ "$label" != "$wanted" ] && [ "$has" = 1 ]; then args+=(--remove-label "$label"); fi
+          done
+          if [ "${#args[@]}" = 0 ]; then
+            echo "#$NUMBER '$TITLE': nothing to change (${wanted:-no managed label})"
+          else
+            gh pr edit "$NUMBER" --repo "$REPO" "${args[@]}"
+            echo "#$NUMBER '$TITLE': ${args[*]}"
+          fi

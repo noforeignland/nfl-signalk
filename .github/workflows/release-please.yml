@@ -1,0 +1,199 @@
+name: release-please
+
+on:
+  push:
+    branches: [main]
+  # The gate below runs release-please only for a push that carries a commit
+  # users get, so a release pull request it has already opened is not
+  # refreshed by a docs or ci merge, and a config change is exactly such a
+  # merge. This trigger re-runs it on demand, which is what rewrites an
+  # outstanding release pull request against the current configuration.
+  # `beta` and `stable` first set the version that release pull request
+  # proposes; see the prepare job.
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'refresh: rebuild the release PR. beta: make it the next beta. stable: make it the stable release of the current beta.'
+        type: choice
+        options: [refresh, beta, stable]
+        default: refresh
+
+permissions: {}
+
+jobs:
+  # GitHub's release notes are never empty, so release-please would propose
+  # a release after every merge, a docs or ci change included. Only a push
+  # carrying a change users get, or the merge of the release PR itself,
+  # which is what creates the tag, goes on to it.
+  #
+  # Every commit in the push is checked, so a merge commit's PR commits count
+  # through their own subjects. A breaking change counts whatever its type, a
+  # `revert:` because what it undoes has shipped, a `build(deps):` because
+  # Dependabot titles a runtime dependency bump that way (a dev dependency is
+  # `build(deps-dev):` and does not count), and a `Release-As:` footer,
+  # matched in any case as release-please does, because it asks for a release
+  # on any subject. GitHub's own `Revert "…"` subject is not conventional, so
+  # release-please ignores it and it is not let through here either. The last
+  # alternative is the release PR's own title, pull-request-title-pattern in
+  # release-please-config.json, and must change with it, or the release PR's
+  # merge is judged non-releasable and no tag is ever created. The payload
+  # holds at most 2048 commits, so a push that fills it may hide more and is
+  # let through.
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      releasable: ${{ steps.check.outputs.releasable }}
+    steps:
+      # A manual run carries no commits to judge, and asking for one is the
+      # statement that it should happen, so it bypasses the check below
+      # rather than being skipped by it for having an empty payload.
+      - id: check
+        env:
+          DISPATCHED: ${{ github.event_name == 'workflow_dispatch' }}
+          MESSAGES: ${{ toJSON(github.event.commits.*.message) }}
+          RELEASABLE: '^((feat|fix|perf|revert)(\([^)]*\))?!?: |[a-z]+(\([^)]*\))?!: |build\(deps\): |chore\(release\): v?[0-9])'
+        run: |
+          if [ "$DISPATCHED" = true ]; then
+            echo "releasable=true" >> "$GITHUB_OUTPUT"
+            echo "Run requested manually; release-please not gated."
+            exit 0
+          fi
+          if jq -e --arg re "$RELEASABLE" '(length >= 2048) or ([.[] | (split("\n")[0] | test($re)) or test("\nBREAKING[- ]CHANGE: ") or test("\nrelease-as: "; "i")] | any)' <<< "$MESSAGES" > /dev/null; then
+            echo "releasable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "releasable=false" >> "$GITHUB_OUTPUT"
+            echo "No releasable commit in this push; release-please not run."
+          fi
+
+  # The release PR proposes a stable version from a stable one (1.4.0 ->
+  # 1.4.1) and the next beta from a beta (1.4.1-beta.1 -> 1.4.1-beta.2):
+  # `versioning: prerelease` with `prerelease: true` in
+  # release-please-config.json. A manual run with `beta` or `stable` moves it
+  # between the two. release-please takes the version from a `Release-As:`
+  # footer on a commit since the last release, so this job pushes an empty
+  # commit carrying one. The footer holds for every later run until that
+  # release is made. A push made with GITHUB_TOKEN starts no workflow, so
+  # release-please runs on it in this same run, below.
+  prepare:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release != 'refresh' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the tags and every commit since the last release
+
+      - name: Set the version the release PR proposes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE: ${{ inputs.release }}
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::Run this workflow from main."
+            exit 1
+          fi
+          current=$(jq -r '."."' .release-please-manifest.json)
+          stable="${current%%-*}"
+
+          if [ "$RELEASE" = beta ]; then
+            if [ "$current" != "$stable" ]; then
+              echo "::error::$current is a beta, so the release PR already proposes the next beta. Merge it, or run this with stable."
+              exit 1
+            fi
+            # The stable version release-please worked out from the commits
+            # since v$current, as the open release PR's title carries it.
+            title=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --label 'autorelease: pending' --json title --jq '.[0].title // ""')
+            target="${title#"chore(release): "}"
+            if ! printf '%s' "$target" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+              echo "::error::No open release PR proposes a stable version (found '$title'), so there is nothing since v$current to release."
+              exit 1
+            fi
+            # Betas are numbered from 1, after any beta of this version
+            # already tagged, by hand or not.
+            last=$(git tag -l "v$target-beta.*" | sed "s/^v$target-beta\.//" | grep -E '^[0-9]+$' | sort -n | tail -n 1 || true)
+            version="$target-beta.$(( ${last:-0} + 1 ))"
+            subject="chore: release $version as a beta"
+          else
+            if [ "$current" = "$stable" ]; then
+              echo "::error::$current is already a stable release; there is no beta to promote."
+              exit 1
+            fi
+            # The stable release is main as it is now, so a change users get
+            # that was merged after the beta would ship without ever being in
+            # one. The pattern is the gate's, without the release PR title.
+            untested=$(git log "v$current..HEAD" --no-merges --format=%s \
+              | grep -E '^((feat|fix|perf|revert)(\([^)]*\))?!?: |[a-z]+(\([^)]*\))?!: |build\(deps\): )' || true)
+            if [ -n "$untested" ]; then
+              echo "::error::main has changes since v$current that were never in a beta. Merge the release PR for the next beta first."
+              {
+                echo "### Not promoted: changes since v$current"
+                echo
+                printf '%s\n' "$untested" | sed 's/^/- /'
+              } >> "$GITHUB_STEP_SUMMARY"
+              printf '%s\n' "$untested"
+              exit 1
+            fi
+            version="$stable"
+            subject="chore: promote $current to $stable"
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit --allow-empty -m "$subject" -m "Release-As: $version"
+          git push origin HEAD:main
+          echo "The release PR now proposes $version." >> "$GITHUB_STEP_SUMMARY"
+
+  release-please:
+    needs: [gate, prepare]
+    # On a push or a refresh, prepare is skipped, and a skipped job skips
+    # every job that needs it unless the condition checks a status itself.
+    if: ${{ !cancelled() && needs.gate.outputs.releasable == 'true' && needs.prepare.result != 'failure' }}
+    # One release-please at a time: two runs, a push and a manual run say,
+    # could both find the merged release PR untagged and both try to create
+    # its release. Never cancelled in progress, since a run may be creating
+    # the tag. A queued run that a newer one replaces loses nothing, because
+    # every run tags whatever merged release PR is still untagged and builds
+    # the open one from the whole range. A run the gate stopped gets a group
+    # of its own, so it can never displace a queued run that has work to do.
+    concurrency:
+      group: ${{ needs.gate.outputs.releasable == 'true' && 'release-please' || format('release-please-{0}', github.run_id) }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      # release-please creates its `autorelease: pending` / `autorelease:
+      # tagged` labels through the issues API the first time it needs them.
+      issues: write
+    outputs:
+      releases_created: ${{ steps.rp.outputs.releases_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: rp
+
+  # The tag release-please just pushed does not start publish.yml by itself:
+  # an event raised with GITHUB_TOKEN starts no workflow, with
+  # workflow_dispatch as the exception. So publish.yml is dispatched on the
+  # tag. It has to stay the file that publishes, since npm's trusted
+  # publishing is bound to that workflow file. This is its own job, so that
+  # the right to start workflows is held by nothing but this one command.
+  publish:
+    needs: release-please
+    # !cancelled(): a skipped prepare above release-please skips this job too
+    # unless the condition checks a status itself.
+    if: ${{ !cancelled() && needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: gh workflow run publish.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"
