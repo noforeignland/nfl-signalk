@@ -9,8 +9,11 @@ updates:
       time: '06:00'
       timezone: Pacific/Auckland
     open-pull-requests-limit: 10
+    # The release-please gate releases a runtime dependency bump, which is
+    # `build(deps)`, and not a dev dependency bump, which is `build(deps-dev)`.
     commit-message:
-      prefix: chore
+      prefix: build
+      prefix-development: build
       include: scope
     labels:
       - dependencies
@@ -21,6 +24,9 @@ updates:
           - minor
           - patch
     ignore:
+      # typescript-eslint does not support TypeScript 7.0, so lint would fail.
+      - dependency-name: typescript
+        versions: ['7.0.x']
       # Keep @types/node on the lowest supported runtime (engines.node,
       # @tsconfig/node22) so TypeScript rejects Node APIs that don't exist there.
       - dependency-name: '@types/node'
@@ -34,8 +40,9 @@ updates:
       time: '06:00'
       timezone: Pacific/Auckland
     open-pull-requests-limit: 5
+    # An action bump changes nothing users get, so it is not a releasable one.
     commit-message:
-      prefix: chore
+      prefix: ci
       include: scope
     labels:
       - dependencies

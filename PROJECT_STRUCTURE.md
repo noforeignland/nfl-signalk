@@ -23,7 +23,6 @@ nfl-signalk/
     DataPathEmitter.js          # SignalK delta emission
     DirectoryUtils.js           # File system utilities
   README.md                     # User documentation
-  CHANGELOG.md                  # Version history
   PROJECT_STRUCTURE.md          # This file
 ```
 

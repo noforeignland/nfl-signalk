@@ -39,7 +39,8 @@ test/
   unit/                 # Vitest tests
   mocks/signalk-app.ts  # Minimal SignalKApp double for tests
 doc/                    # User install notes (Cerbo, RPi)
-.github/workflows/      # signalk-ci.yml (push/PR via shared SignalK reusable workflow), publish.yml (tag → npm)
+.github/workflows/      # signalk-ci.yml (push/PR via shared SignalK reusable workflow), release-please.yml (release PR → tag),
+                        # publish.yml (tag → npm), label-by-title.yml (PR label from the title's type)
 ```
 
 `PROJECT_STRUCTURE.md` has the long-form architecture description and data-flow diagrams — read it before adding new modules or changing the startup sequence.
@@ -79,7 +80,7 @@ noforeignland.status_boolean         0 = OK, 1 = error (no notification emitted;
 noforeignland.source                 Active GNSS source name
 ```
 
-Don't rename or repurpose these paths without a version bump and a note in `CHANGELOG.md` — users wire dashboards to them.
+Don't rename or repurpose these paths without a breaking change (`!` in the PR title, `BREAKING CHANGE:` footer) that says what moved. Users wire dashboards to them.
 
 ## Commands
 
@@ -103,13 +104,14 @@ npm run validate          typecheck + lint + test:coverage  ← the full chain
 
 - **Branches:** work on a feature branch off `main`. Don't commit directly to `main`. Don't use `/` in branch names — use hyphens (`fix-outlier-filter`, not `fix/outlier-filter`).
 - **Commits:** [Angular conventional commits](https://www.conventionalcommits.org/) — `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`. PR titles follow the same convention. No `Co-Authored-By` lines, no "Generated with …" attribution.
-- **`CHANGELOG.md`:** maintained by the human, manually, at release time. **Do not edit it in feature PRs.** Bump the version + changelog in a separate, dedicated PR.
+- **Releases come from release-please.** Never bump `version` in a PR. On every releasable merge to `main`, `release-please.yml` refreshes a standing `chore(release): X.Y.Z` PR. Merging it creates the tag and the GitHub Release, then dispatches `publish.yml`. Releasable means `feat`, `fix`, `perf`, `revert`, any `type!:` or `BREAKING CHANGE:` footer, and `build(deps)` (a runtime dependency bump). `docs`, `ci`, `chore`, `refactor`, `test` and `build(deps-dev)` merges wait for the next releasable one. Release notes are GitHub's, built from PR titles and grouped by the label `label-by-title.yml` sets, so the PR title is the changelog entry. There is no `CHANGELOG.md`.
+- **Betas:** run the release-please workflow by hand with `beta` to turn the open release PR into the next `-beta.N` (npm `beta` tag), and with `stable` to promote the current beta. `refresh` rebuilds the release PR.
 - **PR description:** "Tested" section lists only what was actually verified. No speculative test plans, no `[ ]` / `[x]` checkboxes.
 - **Before pushing:** always run `npm run validate` and `npm run format:check`. If either fails, fix it — don't push and hope CI sorts it out.
 - **Never `git push` without explicit human approval.** Approval to commit is not approval to push.
 - **Never open PRs without explicit human approval.** Wait for the word "PR".
 - **Never merge without explicit human approval.** Wait for the word "merge".
-- **Don't `npm publish` from a developer machine.** Publishing happens via the tag-triggered `publish.yml` workflow against npm trusted publishers (OIDC). Local publishes would break the trust chain.
+- **Don't `npm publish` from a developer machine.** Publishing happens in `publish.yml` against npm trusted publishers (OIDC). Local publishes would break the trust chain. The trusted publisher is bound to that workflow's file name, so don't rename it.
 
 ## Code conventions
 
@@ -136,5 +138,5 @@ npm run validate          typecheck + lint + test:coverage  ← the full chain
 - `README.md` — user-facing install/config notes.
 - `PROJECT_STRUCTURE.md` — architecture, data flow, file locations on Cerbo vs standard.
 - `doc/beta_install_cerbo.md`, `doc/beta_install_rpi.md` — install procedures for hardware testers.
-- `CHANGELOG.md` — version history (human-maintained; do not edit from agents).
+- [GitHub Releases](https://github.com/noforeignland/nfl-signalk/releases) — version history, back to 0.1.25.
 - Upstream: this repo is a maintained fork of `amirlanesman/signalk-to-nfl` under the `noforeignland` GitHub org.
