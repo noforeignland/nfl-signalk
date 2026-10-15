@@ -4,9 +4,7 @@
 
 import path from 'node:path';
 import type { SignalKApp, PluginConfig, FlatConfig, ConfigSchema } from '../types';
-import { DEFAULT_MAX_VELOCITY } from '../utils/validation';
-
-const DEFAULT_TRACKS_DIR = 'nfl-track';
+import { CONFIG_DEFAULTS, configSchema } from './configSchema';
 
 interface MigrationResult {
   options: PluginConfig;
@@ -77,17 +75,18 @@ export class ConfigManager {
   flattenConfig(options: PluginConfig): FlatConfig {
     return {
       boatApiKey: options.mandatory?.boatApiKey ?? '',
-      minMove: options.advanced?.minMove ?? 80,
-      minSpeed: options.advanced?.minSpeed ?? 1.5,
-      sendWhileMoving: options.advanced?.sendWhileMoving ?? true,
-      ping_api_every_24h: options.advanced?.ping_api_every_24h ?? true,
+      minMove: options.advanced?.minMove ?? CONFIG_DEFAULTS.minMove,
+      minSpeed: options.advanced?.minSpeed ?? CONFIG_DEFAULTS.minSpeed,
+      sendWhileMoving: options.advanced?.sendWhileMoving ?? CONFIG_DEFAULTS.sendWhileMoving,
+      ping_api_every_24h:
+        options.advanced?.ping_api_every_24h ?? CONFIG_DEFAULTS.ping_api_every_24h,
       filterSource: options.expert?.filterSource,
-      trackDir: options.expert?.trackDir || DEFAULT_TRACKS_DIR,
-      keepFiles: options.expert?.keepFiles ?? false,
-      trackFrequency: options.expert?.trackFrequency ?? 60,
-      apiCron: options.expert?.apiCron || '*/10 * * * *',
-      apiTimeout: options.expert?.apiTimeout ?? 30,
-      maxVelocity: options.expert?.maxVelocity ?? DEFAULT_MAX_VELOCITY,
+      trackDir: options.expert?.trackDir || CONFIG_DEFAULTS.trackDir,
+      keepFiles: options.expert?.keepFiles ?? CONFIG_DEFAULTS.keepFiles,
+      trackFrequency: options.expert?.trackFrequency ?? CONFIG_DEFAULTS.trackFrequency,
+      apiCron: options.expert?.apiCron || CONFIG_DEFAULTS.apiCron,
+      apiTimeout: options.expert?.apiTimeout ?? CONFIG_DEFAULTS.apiTimeout,
+      maxVelocity: options.expert?.maxVelocity ?? CONFIG_DEFAULTS.maxVelocity,
     };
   }
 
@@ -118,7 +117,7 @@ export class ConfigManager {
    * Randomize CRON schedule to avoid all instances running at same time
    */
   randomizeCron(config: FlatConfig): FlatConfig {
-    if (!config.apiCron || config.apiCron === '*/10 * * * *') {
+    if (!config.apiCron || config.apiCron === CONFIG_DEFAULTS.apiCron) {
       const startMinute = Math.floor(Math.random() * 10);
       const startSecond = Math.floor(Math.random() * 60);
       config.apiCron = `${String(startSecond)} ${String(startMinute)}/10 * * * *`;
@@ -130,120 +129,7 @@ export class ConfigManager {
    * Get the full schema for plugin configuration
    */
   static getSchema(pluginName: string): ConfigSchema {
-    return {
-      title: pluginName,
-      description: 'Some parameters need for use',
-      type: 'object',
-      properties: {
-        // Mandatory Settings Group
-        mandatory: {
-          type: 'object',
-          title: 'Mandatory Settings',
-          properties: {
-            boatApiKey: {
-              type: 'string',
-              title: 'Boat API Key',
-              description:
-                'Boat API Key from noforeignland.com. Can be found in Account > Settings > Boat tracking > API Key.',
-            },
-          },
-        },
-
-        // Advanced Settings Group
-        advanced: {
-          type: 'object',
-          title: 'Advanced Settings',
-          properties: {
-            minMove: {
-              type: 'number',
-              title: 'Minimum boat move to log in meters',
-              description:
-                'To keep file sizes small we only log positions if a move larger than this size (if set to 0 will log every move)',
-              default: 80,
-            },
-            minSpeed: {
-              type: 'number',
-              title: 'Minimum boat speed to log in knots',
-              description:
-                'To keep file sizes small we only log positions if boat speed goes above this value to minimize recording position on anchor or mooring (if set to 0 will log every move)',
-              default: 1.5,
-            },
-            sendWhileMoving: {
-              type: 'boolean',
-              title: 'Attempt sending location while moving',
-              description:
-                'Should the plugin attempt to send tracking data to NFL while detecting the vessel is moving or only when stopped?',
-              default: true,
-            },
-            ping_api_every_24h: {
-              type: 'boolean',
-              title: 'Force a send every 24 hours',
-              description:
-                'Keeps your boat active on NFL in your current location even if you do not move',
-              default: true,
-            },
-          },
-        },
-
-        // Expert Settings Group
-        expert: {
-          type: 'object',
-          title: 'Expert Settings',
-          properties: {
-            filterSource: {
-              type: 'string',
-              title: 'Position source device',
-              description:
-                'EMPTY DEFAULT IS FINE - Set this value to the name of a source if you want to only use the position given by that source.',
-            },
-            maxVelocity: {
-              type: 'number',
-              title: 'Maximum velocity (m/s)',
-              description:
-                'Reject positions implying faster movement than this (catches GPS outliers). Default: 50 m/s ≈ 97 knots.',
-              default: DEFAULT_MAX_VELOCITY,
-              minimum: 10,
-              maximum: 200,
-            },
-            trackDir: {
-              type: 'string',
-              title: 'Directory to cache tracks',
-              description:
-                'EMPTY DEFAULT IS FINE - Path to store track data. Relative paths are stored in plugin data directory. Absolute paths can point anywhere.\nDefault: nfl-track',
-            },
-            keepFiles: {
-              type: 'boolean',
-              title: 'Keep track files on disk',
-              description:
-                'If you have a lot of hard drive space you can keep the track files for logging purposes.',
-              default: false,
-            },
-            trackFrequency: {
-              type: 'integer',
-              title: 'Position tracking frequency in seconds',
-              description:
-                'To keep file sizes small we only log positions once in a while (unless you set this value to 0)',
-              default: 60,
-            },
-            apiCron: {
-              type: 'string',
-              title: 'Send attempt CRON',
-              description:
-                'We send the tracking data to NFL once in a while, you can set the schedule with this setting.\nCRON format: https://crontab.guru/',
-              default: '*/10 * * * *',
-            },
-            apiTimeout: {
-              type: 'integer',
-              title: 'API request timeout in seconds',
-              description: 'Timeout for sending data to NFL API. Increase for slow connections.',
-              default: 30,
-              minimum: 10,
-              maximum: 180,
-            },
-          },
-        },
-      },
-    };
+    return configSchema(pluginName);
   }
 }
 

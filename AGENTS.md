@@ -12,12 +12,13 @@ The plugin is published to npm as `@noforeignland/signalk-to-noforeignland` and 
 
 ## Stack
 
-- **Language:** TypeScript 5, `strict` + `strictTypeChecked` ESLint config (no `any`, no unsafe casts, no floating promises).
+- **Language:** TypeScript 6.0 (held below 6.1 until typescript-eslint supports newer), `strict` + `strictTypeChecked` ESLint config (no `any`, no unsafe casts, no floating promises).
 - **Runtime:** Node.js ≥ 22 (CI matrix: 22.x, 24.x). An ES module (`"type": "module"`); Signal K server loads ESM plugins since 2.14.
 - **Build:** `vite build` bundles `src/` into one ES module, `dist/index.js`, with node built-ins and runtime dependencies left external. `vite-plugin-checker` runs `tsc` and fails the build on a type error; `vite-plugin-dts` writes the declarations. Config is `vite.config.ts`. `dist/` is the only thing published to npm.
 - **Tests:** Vitest, configured in the `test` block of `vite.config.ts`. Coverage (`@vitest/coverage-v8`, 80 % thresholds) counts the source files the tests load. Vitest does not typecheck, so `npm run typecheck` also checks `test/` through `tsconfig.eslint.json`.
 - **Lint/format:** ESLint flat config (`eslint.config.mjs`) + Prettier (`.prettierrc`).
 - **Signal K types:** `@signalk/server-api`.
+- **Config schema:** `typebox` 1.x (the unscoped package; `@sinclair/typebox` is the separate 0.34 line). `src/lib/configSchema.ts` defines the settings form, and through `Static` the type of the stored configuration. `test/unit/__snapshots__/config-schema.json` pins the schema as emitted. A change there is a change to the form users see, so update it on purpose (`npx vitest run -u`) and review the diff.
 
 ## Layout
 
@@ -25,7 +26,8 @@ The plugin is published to npm as `@noforeignland/signalk-to-noforeignland` and 
 src/
   index.ts              # Plugin entry — exports SignalK plugin object, owns lifecycle
   lib/                  # One responsibility per module
-    ConfigManager.ts    # Schema, config migration, defaults, CRON randomisation
+    ConfigManager.ts    # Config migration, flattening with defaults, CRON randomisation
+    configSchema.ts     # typebox schema of the settings form, CONFIG_DEFAULTS
     TrackLogger.ts      # Subscribes to navigation.position, writes pending.jsonl
     TrackSender.ts      # Reads pending.jsonl, POSTs to NFL API with retry
     HealthMonitor.ts    # Position-freshness checks, error/healthy callbacks

@@ -1,0 +1,98 @@
+{
+  "type": "object",
+  "properties": {
+    "mandatory": {
+      "type": "object",
+      "properties": {
+        "boatApiKey": {
+          "type": "string",
+          "title": "Boat API Key",
+          "description": "Boat API Key from noforeignland.com. Can be found in Account > Settings > Boat tracking > API Key."
+        }
+      },
+      "title": "Mandatory Settings"
+    },
+    "advanced": {
+      "type": "object",
+      "properties": {
+        "minMove": {
+          "type": "number",
+          "title": "Minimum boat move to log in meters",
+          "description": "To keep file sizes small we only log positions if a move larger than this size (if set to 0 will log every move)",
+          "default": 80
+        },
+        "minSpeed": {
+          "type": "number",
+          "title": "Minimum boat speed to log in knots",
+          "description": "To keep file sizes small we only log positions if boat speed goes above this value to minimize recording position on anchor or mooring (if set to 0 will log every move)",
+          "default": 1.5
+        },
+        "sendWhileMoving": {
+          "type": "boolean",
+          "title": "Attempt sending location while moving",
+          "description": "Should the plugin attempt to send tracking data to NFL while detecting the vessel is moving or only when stopped?",
+          "default": true
+        },
+        "ping_api_every_24h": {
+          "type": "boolean",
+          "title": "Force a send every 24 hours",
+          "description": "Keeps your boat active on NFL in your current location even if you do not move",
+          "default": true
+        }
+      },
+      "title": "Advanced Settings"
+    },
+    "expert": {
+      "type": "object",
+      "properties": {
+        "filterSource": {
+          "type": "string",
+          "title": "Position source device",
+          "description": "EMPTY DEFAULT IS FINE - Set this value to the name of a source if you want to only use the position given by that source."
+        },
+        "maxVelocity": {
+          "type": "number",
+          "title": "Maximum velocity (m/s)",
+          "description": "Reject positions implying faster movement than this (catches GPS outliers). Default: 50 m/s ≈ 97 knots.",
+          "default": 50,
+          "minimum": 10,
+          "maximum": 200
+        },
+        "trackDir": {
+          "type": "string",
+          "title": "Directory to cache tracks",
+          "description": "EMPTY DEFAULT IS FINE - Path to store track data. Relative paths are stored in plugin data directory. Absolute paths can point anywhere.\nDefault: nfl-track"
+        },
+        "keepFiles": {
+          "type": "boolean",
+          "title": "Keep track files on disk",
+          "description": "If you have a lot of hard drive space you can keep the track files for logging purposes.",
+          "default": false
+        },
+        "trackFrequency": {
+          "type": "integer",
+          "title": "Position tracking frequency in seconds",
+          "description": "To keep file sizes small we only log positions once in a while (unless you set this value to 0)",
+          "default": 60
+        },
+        "apiCron": {
+          "type": "string",
+          "title": "Send attempt CRON",
+          "description": "We send the tracking data to NFL once in a while, you can set the schedule with this setting.\nCRON format: https://crontab.guru/",
+          "default": "*/10 * * * *"
+        },
+        "apiTimeout": {
+          "type": "integer",
+          "title": "API request timeout in seconds",
+          "description": "Timeout for sending data to NFL API. Increase for slow connections.",
+          "default": 30,
+          "minimum": 10,
+          "maximum": 180
+        }
+      },
+      "title": "Expert Settings"
+    }
+  },
+  "title": "Signal K to Noforeignland",
+  "description": "Some parameters need for use"
+}

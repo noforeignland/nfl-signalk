@@ -1,26 +1,13 @@
+import type { StoredConfig } from '../lib/configSchema';
+
 /**
- * Plugin configuration as stored (nested structure)
+ * Plugin configuration as stored: the schema's nested groups, plus the flat
+ * keys of configurations saved before the groups existed, which
+ * ConfigManager.migrateOldConfig moves into them.
  */
-export interface PluginConfig {
-  mandatory?: {
-    boatApiKey?: string;
-  };
-  advanced?: {
-    minMove?: number;
-    minSpeed?: number;
-    sendWhileMoving?: boolean;
-    ping_api_every_24h?: boolean;
-  };
-  expert?: {
-    filterSource?: string;
-    trackDir?: string;
-    keepFiles?: boolean;
-    trackFrequency?: number;
-    apiCron?: string;
-    apiTimeout?: number;
-    maxVelocity?: number;
-  };
-  // Legacy flat config fields (for migration)
+export type PluginConfig = StoredConfig & LegacyFlatConfig;
+
+interface LegacyFlatConfig {
   boatApiKey?: string;
   minMove?: number;
   minSpeed?: number;
@@ -53,12 +40,4 @@ export interface FlatConfig {
   maxVelocity: number;
 }
 
-/**
- * JSON Schema for plugin configuration UI
- */
-export interface ConfigSchema {
-  title: string;
-  description: string;
-  type: 'object';
-  properties: Record<string, unknown>;
-}
+export type { ConfigSchema } from '../lib/configSchema';
