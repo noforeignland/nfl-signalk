@@ -3,7 +3,8 @@
  */
 
 import fs from 'fs-extra';
-import path from 'path';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { SignalKApp } from '../types';
 
 export class TrackMigration {
@@ -60,7 +61,12 @@ export class TrackMigration {
    * Migrate track files from old plugin directory location
    */
   async migrateFromOldPluginDir(newPendingFile: string, newSentFile: string): Promise<void> {
-    const oldPluginTrackDir = path.join(__dirname, '..', '..', 'track');
+    // Relative to the bundle, dist/index.js: the package root is one level up.
+    const oldPluginTrackDir = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '..',
+      'track'
+    );
 
     if (!(await fs.pathExists(oldPluginTrackDir))) {
       return;

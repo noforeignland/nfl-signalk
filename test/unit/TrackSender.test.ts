@@ -6,28 +6,30 @@
  * can persist them per track), not in headers. See the version-telemetry change.
  */
 
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'fs-extra';
-import os from 'os';
-import path from 'path';
+import os from 'node:os';
+import path from 'node:path';
 import fetch, { Headers } from 'node-fetch';
 import { TrackSender } from '../../src/lib/TrackSender';
 import { NFL_PLUGIN_API_KEY } from '../../src/types/api';
 import { createMockApp } from '../mocks/signalk-app';
 import type { FlatConfig } from '../../src/types';
 
-jest.mock('node-fetch', () => {
-  const actual = jest.requireActual<typeof import('node-fetch')>('node-fetch');
+vi.mock('node-fetch', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node-fetch')>();
   return {
-    __esModule: true,
-    default: jest.fn(),
+    default: vi.fn(),
     Headers: actual.Headers,
   };
 });
 
-const mockFetch = fetch as unknown as jest.MockedFunction<typeof fetch>;
+const mockFetch = vi.mocked(fetch);
 
 const PKG_VERSION = (
-  JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8')) as {
+  JSON.parse(
+    fs.readFileSync(path.join(import.meta.dirname, '..', '..', 'package.json'), 'utf8')
+  ) as {
     version: string;
   }
 ).version;
@@ -178,7 +180,7 @@ describe('TrackSender send behaviour', () => {
 
   it('retries a 5xx response up to the retry limit', async () => {
     // sendWithRetry backs off 2000ms * attempt between tries (~6s total), so this
-    // test needs a longer timeout than the 5s jest default to see all 3 attempts.
+    // test needs a longer timeout than the 5s vitest default to see all 3 attempts.
     mockFetch.mockResolvedValue(errorResponse(503, 'Service Unavailable'));
     const sender = new TrackSender(createMockApp(), makeConfig(), trackDir);
     await expect(sender.sendTrack()).rejects.toThrow('503');

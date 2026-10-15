@@ -31,5 +31,12 @@ export default tseslint.config(
       '@typescript-eslint/restrict-template-expressions': 'error',
     },
   },
+  {
+    // Not part of the TypeScript project: with skipLibCheck off, its imports
+    // would pull vite-plugin-checker's declarations, which reference optional
+    // checkers this repo does not install.
+    files: ['vite.config.ts'],
+    ...tseslint.configs.disableTypeChecked,
+  },
   eslintConfigPrettier
 );

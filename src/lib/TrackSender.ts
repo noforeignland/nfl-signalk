@@ -3,9 +3,9 @@
  */
 
 import fs from 'fs-extra';
-import https from 'https';
-import path from 'path';
-import readline from 'readline';
+import https from 'node:https';
+import path from 'node:path';
+import readline from 'node:readline';
 import fetch, { Headers } from 'node-fetch';
 import type { SignalKApp, FlatConfig, SavedPosition, TrackData, NFLApiResponse } from '../types';
 import { NFL_PLUGIN_API_KEY, NFL_API_URL } from '../types/api';
@@ -29,23 +29,8 @@ const httpsAgent = new https.Agent({
   autoSelectFamilyAttemptTimeout: 5000,
 });
 
-/**
- * Read this plugin's own version from package.json once at load. The file sits
- * two levels above the compiled module (dist/lib/TrackSender.js -> package root),
- * outside rootDir, so we read it via __dirname rather than importing it. NFL logs
- * this with each track to tell which plugin/version a boat is uploading from.
- */
-function readPluginVersion(): string {
-  try {
-    const pkgPath = path.join(__dirname, '..', '..', 'package.json');
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version?: string };
-    return pkg.version ?? 'unknown';
-  } catch {
-    return 'unknown';
-  }
-}
-
-const PLUGIN_VERSION = readPluginVersion();
+/** NFL logs this with each track to tell which plugin version a boat is uploading from. */
+const PLUGIN_VERSION = __PLUGIN_VERSION__;
 const NODE_VERSION = process.version;
 
 class ApiError extends Error {

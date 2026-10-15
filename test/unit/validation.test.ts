@@ -3,6 +3,7 @@
  * These tests are critical - they verify the fix for Bruce's GPS anomalies
  */
 
+import { describe, expect, it } from 'vitest';
 import {
   validatePosition,
   validateVelocity,

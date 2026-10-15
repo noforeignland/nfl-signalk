@@ -12,10 +12,10 @@ The plugin is published to npm as `@noforeignland/signalk-to-noforeignland` and 
 
 ## Stack
 
-- **Language:** TypeScript 5.7, `strict` + `strictTypeChecked` ESLint config (no `any`, no unsafe casts, no floating promises).
-- **Runtime:** Node.js ≥ 18 (CI matrix: 22.x, 24.x).
-- **Build:** `tsc` → `dist/` (no bundler). `dist/` is the only thing published to npm.
-- **Tests:** Jest + ts-jest. Config is `jest.config.ts`.
+- **Language:** TypeScript 5, `strict` + `strictTypeChecked` ESLint config (no `any`, no unsafe casts, no floating promises).
+- **Runtime:** Node.js ≥ 22 (CI matrix: 22.x, 24.x). An ES module (`"type": "module"`); Signal K server loads ESM plugins since 2.14.
+- **Build:** `vite build` bundles `src/` into one ES module, `dist/index.js`, with node built-ins and runtime dependencies left external. `vite-plugin-checker` runs `tsc` and fails the build on a type error; `vite-plugin-dts` writes the declarations. Config is `vite.config.ts`. `dist/` is the only thing published to npm.
+- **Tests:** Vitest, configured in the `test` block of `vite.config.ts`. Coverage (`@vitest/coverage-v8`, 80 % thresholds) counts the source files the tests load. Vitest does not typecheck, so `npm run typecheck` also checks `test/` through `tsconfig.eslint.json`.
 - **Lint/format:** ESLint flat config (`eslint.config.mjs`) + Prettier (`.prettierrc`).
 - **Signal K types:** `@signalk/server-api`.
 
@@ -36,7 +36,7 @@ src/
   types/                # Shared types (signalk.ts, config.ts, position.ts, api.ts)
   utils/                # validation.ts, geo.ts (equirectangular distance, m/s↔kts)
 test/
-  unit/                 # Jest tests
+  unit/                 # Vitest tests
   mocks/signalk-app.ts  # Minimal SignalKApp double for tests
 doc/                    # User install notes (Cerbo, RPi)
 .github/workflows/      # signalk-ci.yml (push/PR via shared SignalK reusable workflow), publish.yml (tag → npm)
@@ -49,7 +49,7 @@ doc/                    # User install notes (Cerbo, RPi)
 The Signal K plugin contract is:
 
 ```ts
-export = (app: SignalKApp): Plugin => ({ id, name, description, schema, start, stop });
+export default (app: SignalKApp): Plugin => ({ id, name, description, schema, start, stop });
 ```
 
 `start(config)` is `async` and must be idempotent under restart. `stop()` must tear down everything started in `start()`:
@@ -85,15 +85,15 @@ Don't rename or repurpose these paths without a version bump and a note in `CHAN
 
 ```
 npm install               Install dependencies
-npm run build             tsc → dist/
-npm run dev               tsc --watch
-npm run typecheck         tsc --noEmit
-npm run lint              eslint src test
+npm run build             vite build → dist/ (fails on a type error)
+npm run dev               vite build --watch
+npm run typecheck         tsc --noEmit over src/, then src/ + test/
+npm run lint              eslint src test vite.config.ts
 npm run lint:fix          eslint --fix
 npm run format            eslint --fix + prettier --write
 npm run format:check      prettier --check (run this before pushing)
-npm test                  jest
-npm run test:coverage     jest --coverage
+npm test                  vitest run
+npm run test:coverage     vitest run --coverage
 npm run validate          typecheck + lint + test:coverage  ← the full chain
 ```
 
@@ -123,7 +123,8 @@ npm run validate          typecheck + lint + test:coverage  ← the full chain
 
 ## Things that have bitten us before
 
-- **`dist/` is gitignored but must be in the npm tarball.** That's what `.npmignore` is for — keep `dist` out of `.npmignore`'s ignore list. CI verifies `dist/index.js` and `dist/index.d.ts` exist after build.
+- **`dist/` is gitignored but must be in the npm tarball.** The `files` allowlist in `package.json` is what ships it; check with `npm pack --dry-run`. CI verifies `dist/index.js` and `dist/index.d.ts` exist after build.
+- **The published code is one file, `dist/index.js`, one level below the package root.** Anything that finds a file relative to its own module (`import.meta.url`) runs from there, not from `src/lib/`. That is why the plugin version reaches the code as `__PLUGIN_VERSION__`, set by `define` in `vite.config.ts`, rather than by reading `package.json`.
 - **`composite: true` in `tsconfig.json` breaks the build** when combined with `tsc --noEmit` in `typecheck`. Don't add it back.
 - **Position validation rejects coordinates near `(0, 0)`** — this is intentional (catches uninitialised GNSS). Don't "fix" it.
 - **GNSS source auto-selection is sticky.** Once a source is chosen, `TrackLogger` only switches if the current source goes stale (>5 min). Changing this risks track jumps when multiple GNSS devices are present.

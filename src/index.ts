@@ -1,6 +1,5 @@
 /**
  * Signal K plugin to log track data to noforeignland.com
- * Version 1.2.0-beta.5 - TypeScript rewrite with velocity-based outlier filtering
  */
 
 import { CronJob } from 'cron';
@@ -327,9 +326,3 @@ export default function (app: SignalKApp): Plugin {
   const instance = new SignalkToNoforeignland(app);
   return instance.getPluginObject();
 }
-
-// Also export as module.exports for CommonJS compatibility
-module.exports = function (app: SignalKApp): Plugin {
-  const instance = new SignalkToNoforeignland(app);
-  return instance.getPluginObject();
-};

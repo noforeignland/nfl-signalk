@@ -1,13 +1,15 @@
 {
-  "extends": "@tsconfig/node20/tsconfig.json",
+  "extends": "@tsconfig/node22/tsconfig.json",
   "compilerOptions": {
+    // The base sets module/moduleResolution for code Node resolves file by
+    // file; vite bundles this plugin into one file, so resolution follows
+    // the bundler.
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "allowJs": true,
-    "typeRoots": ["./src/types", "./node_modules/@types"],
-    "resolveJsonModule": true,
     "declaration": true,
-    "declarationMap": true,
     "forceConsistentCasingInFileNames": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -18,13 +20,7 @@
     "noImplicitOverride": true,
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": false,
-    "moduleResolution": "node",
-    "module": "commonjs",
-    "target": "ES2022"
-  },
-  "ts-node": {
-    "files": true
+    "skipLibCheck": false
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "test"]

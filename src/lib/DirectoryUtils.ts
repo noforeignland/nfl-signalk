@@ -2,7 +2,7 @@
  * Directory utility functions
  */
 
-import fs from 'fs';
+import fs from 'node:fs';
 
 /**
  * Minimal app interface for directory utils (only needs debug)
