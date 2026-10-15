@@ -2,6 +2,7 @@
  * Mock Signal K app for testing
  */
 
+import { vi, type Mock } from 'vitest';
 import type { SignalKApp, Delta, SubscribeCommand, Unsubscribe } from '../../src/types';
 
 export interface MockAppOptions {
@@ -14,14 +15,14 @@ export interface MockAppOptions {
 export interface MockSignalKApp extends SignalKApp {
   // Expose mocks for assertions
   _mocks: {
-    debug: jest.Mock;
-    error: jest.Mock;
-    setPluginStatus: jest.Mock;
-    setPluginError: jest.Mock;
-    getDataDirPath: jest.Mock;
-    savePluginOptions: jest.Mock;
-    handleMessage: jest.Mock;
-    subscribe: jest.Mock;
+    debug: Mock;
+    error: Mock;
+    setPluginStatus: Mock;
+    setPluginError: Mock;
+    getDataDirPath: Mock;
+    savePluginOptions: Mock;
+    handleMessage: Mock;
+    subscribe: Mock;
   };
   // Helper to trigger subscription callbacks
   _triggerDelta: (delta: Delta) => void;
@@ -32,16 +33,16 @@ export function createMockApp(options: MockAppOptions = {}): MockSignalKApp {
   let subscribeCallback: ((delta: Delta) => void) | null = null;
 
   const mocks = {
-    debug: jest.fn(),
-    error: jest.fn(),
-    setPluginStatus: jest.fn(),
-    setPluginError: jest.fn(),
-    getDataDirPath: jest.fn(() => dataDir),
-    savePluginOptions: jest.fn((_options: unknown, callback?: (err?: Error) => void) => {
+    debug: vi.fn(),
+    error: vi.fn(),
+    setPluginStatus: vi.fn(),
+    setPluginError: vi.fn(),
+    getDataDirPath: vi.fn(() => dataDir),
+    savePluginOptions: vi.fn((_options: unknown, callback?: (err?: Error) => void) => {
       if (callback) callback();
     }),
-    handleMessage: jest.fn(),
-    subscribe: jest.fn(
+    handleMessage: vi.fn(),
+    subscribe: vi.fn(
       (
         _command: SubscribeCommand,
         unsubscribes: Unsubscribe[],

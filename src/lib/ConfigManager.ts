@@ -2,7 +2,7 @@
  * Configuration management for the plugin
  */
 
-import path from 'path';
+import path from 'node:path';
 import type { SignalKApp, PluginConfig, FlatConfig, ConfigSchema } from '../types';
 import { DEFAULT_MAX_VELOCITY } from '../utils/validation';
 

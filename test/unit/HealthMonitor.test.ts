@@ -6,6 +6,7 @@
  * delivery per trackFrequency window. See issue #38.
  */
 
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HealthMonitor, computeStaleThresholdSeconds } from '../../src/lib/HealthMonitor';
 import { createMockApp } from '../mocks/signalk-app';
 import type { FlatConfig } from '../../src/types';
@@ -45,18 +46,18 @@ describe('HealthMonitor.performHealthCheck', () => {
   const NOW = 1_700_000_000_000;
 
   beforeEach(() => {
-    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+    vi.spyOn(Date, 'now').mockReturnValue(NOW);
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('does not error on a 599s gap when trackFrequency is 600 (issue #38 regression)', () => {
     const app = createMockApp();
     const monitor = new HealthMonitor(app, makeConfig({ trackFrequency: 600 }));
-    const onError = jest.fn();
-    const onHealthy = jest.fn();
+    const onError = vi.fn();
+    const onHealthy = vi.fn();
 
     monitor.performHealthCheck(NOW - 599_000, null, onError, onHealthy);
 
@@ -67,8 +68,8 @@ describe('HealthMonitor.performHealthCheck', () => {
   it('still errors when the gap exceeds the derived threshold', () => {
     const app = createMockApp();
     const monitor = new HealthMonitor(app, makeConfig({ trackFrequency: 600 }));
-    const onError = jest.fn();
-    const onHealthy = jest.fn();
+    const onError = vi.fn();
+    const onHealthy = vi.fn();
 
     monitor.performHealthCheck(NOW - 1_400_000, null, onError, onHealthy);
 
@@ -79,8 +80,8 @@ describe('HealthMonitor.performHealthCheck', () => {
   it('errors at the legacy 300s threshold when trackFrequency is low', () => {
     const app = createMockApp();
     const monitor = new HealthMonitor(app, makeConfig({ trackFrequency: 60 }));
-    const onError = jest.fn();
-    const onHealthy = jest.fn();
+    const onError = vi.fn();
+    const onHealthy = vi.fn();
 
     monitor.performHealthCheck(NOW - 600_000, null, onError, onHealthy);
 
@@ -91,8 +92,8 @@ describe('HealthMonitor.performHealthCheck', () => {
   it('errors when lastPositionReceived is null', () => {
     const app = createMockApp();
     const monitor = new HealthMonitor(app, makeConfig());
-    const onError = jest.fn();
-    const onHealthy = jest.fn();
+    const onError = vi.fn();
+    const onHealthy = vi.fn();
 
     monitor.performHealthCheck(null, null, onError, onHealthy);
 
@@ -103,8 +104,8 @@ describe('HealthMonitor.performHealthCheck', () => {
   it('mentions the filtered source in the error when filterSource is set', () => {
     const app = createMockApp();
     const monitor = new HealthMonitor(app, makeConfig({ filterSource: 'can0.2' }));
-    const onError = jest.fn();
-    const onHealthy = jest.fn();
+    const onError = vi.fn();
+    const onHealthy = vi.fn();
 
     monitor.performHealthCheck(NOW - 1_000_000, null, onError, onHealthy);
 
@@ -115,8 +116,8 @@ describe('HealthMonitor.performHealthCheck', () => {
   it('null-source error mentions the filtered source', () => {
     const app = createMockApp();
     const monitor = new HealthMonitor(app, makeConfig({ filterSource: 'can0.2' }));
-    const onError = jest.fn();
-    const onHealthy = jest.fn();
+    const onError = vi.fn();
+    const onHealthy = vi.fn();
 
     monitor.performHealthCheck(null, null, onError, onHealthy);
 
@@ -128,7 +129,7 @@ describe('HealthMonitor.performInitialCheck', () => {
   it('errors when no position has ever been received', () => {
     const app = createMockApp();
     const monitor = new HealthMonitor(app, makeConfig());
-    const onError = jest.fn();
+    const onError = vi.fn();
 
     monitor.performInitialCheck(null, null, onError);
 
@@ -138,7 +139,7 @@ describe('HealthMonitor.performInitialCheck', () => {
   it('mentions the filtered source on initial-check failure', () => {
     const app = createMockApp();
     const monitor = new HealthMonitor(app, makeConfig({ filterSource: 'can0.2' }));
-    const onError = jest.fn();
+    const onError = vi.fn();
 
     monitor.performInitialCheck(null, null, onError);
 
@@ -148,7 +149,7 @@ describe('HealthMonitor.performInitialCheck', () => {
   it('does nothing when a position has been received', () => {
     const app = createMockApp();
     const monitor = new HealthMonitor(app, makeConfig());
-    const onError = jest.fn();
+    const onError = vi.fn();
 
     monitor.performInitialCheck(Date.now(), null, onError);
 
@@ -158,18 +159,18 @@ describe('HealthMonitor.performInitialCheck', () => {
 
 describe('HealthMonitor.start/stop', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   it('schedules an initial check after 2 minutes and a periodic check every 5', () => {
     const app = createMockApp();
     const monitor = new HealthMonitor(app, makeConfig());
-    const onError = jest.fn();
-    const onHealthy = jest.fn();
+    const onError = vi.fn();
+    const onHealthy = vi.fn();
 
     monitor.start(
       () => null,
@@ -178,14 +179,14 @@ describe('HealthMonitor.start/stop', () => {
       onHealthy
     );
 
-    jest.advanceTimersByTime(2 * 60 * 1000);
+    vi.advanceTimersByTime(2 * 60 * 1000);
     expect(onError).toHaveBeenCalledTimes(1);
 
-    jest.advanceTimersByTime(5 * 60 * 1000);
+    vi.advanceTimersByTime(5 * 60 * 1000);
     expect(onError).toHaveBeenCalledTimes(2);
 
     monitor.stop();
-    jest.advanceTimersByTime(10 * 60 * 1000);
+    vi.advanceTimersByTime(10 * 60 * 1000);
     expect(onError).toHaveBeenCalledTimes(2);
   });
 
