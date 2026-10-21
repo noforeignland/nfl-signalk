@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeFetchError } from '../../src/utils/errors';
+import { describeFetchError, isMissingFile } from '../../src/utils/errors';
 
 describe('describeFetchError', () => {
   const URL = 'https://www.noforeignland.com/home/api/v1/boat/tracking/track';
@@ -57,5 +57,16 @@ describe('describeFetchError', () => {
   it('ignores non-string diagnostic fields', () => {
     const err = fetchError('', { code: 42, errno: -4077, type: 'system' });
     expect(describeFetchError(err)).toBe(`request to ${URL} failed, reason: system`);
+  });
+});
+
+describe('isMissingFile', () => {
+  it('is true only for a file that does not exist', () => {
+    expect(isMissingFile(Object.assign(new Error('no such file'), { code: 'ENOENT' }))).toBe(true);
+    expect(isMissingFile(Object.assign(new Error('permission denied'), { code: 'EACCES' }))).toBe(
+      false
+    );
+    expect(isMissingFile(new Error('no code'))).toBe(false);
+    expect(isMissingFile('ENOENT')).toBe(false);
   });
 });

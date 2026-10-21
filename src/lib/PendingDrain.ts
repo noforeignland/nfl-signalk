@@ -7,6 +7,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Fix, PluginConfig } from '../types';
+import { isMissingFile } from '../utils/errors';
 import { isValidLatitude, isValidLongitude } from '../utils/validation';
 
 const LEGACY_TRACK_DIR = 'nfl-track';
@@ -39,13 +40,20 @@ function legacyTrackDir(config: PluginConfig): string | undefined {
 export class PendingFile {
   constructor(private readonly file: string) {}
 
-  /** The fixes still waiting in the file, oldest first; none when there is no file. */
+  /**
+   * The fixes still waiting in the file, oldest first; none when there is no
+   * file. A file that cannot be read throws, so its fixes are tried again on
+   * the next pass instead of being taken for none.
+   */
   async read(): Promise<Fix[]> {
     let text: string;
     try {
       text = await fs.readFile(this.file, 'utf8');
-    } catch {
-      return [];
+    } catch (error) {
+      if (isMissingFile(error)) {
+        return [];
+      }
+      throw error;
     }
     return text
       .split(/\r?\n/)

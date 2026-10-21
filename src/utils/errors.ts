@@ -52,3 +52,8 @@ export function describeFetchError(err: unknown): string {
     ? `${trimmed} ${detail}`
     : `${trimmed} connection error (no further detail from the network layer)`;
 }
+
+/** Whether a filesystem error says the file does not exist, as opposed to it being unreadable. */
+export function isMissingFile(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
+}

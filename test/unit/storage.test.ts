@@ -35,7 +35,12 @@ describe('UploadStateStore', () => {
     expect(await new UploadStateStore(dir).load()).toBeNull();
   });
 
-  it('treats an unreadable or foreign state as none', async () => {
+  it('fails rather than starting over when the state is there but cannot be read', async () => {
+    await fs.mkdir(path.join(dir, STATE_FILE_NAME));
+    await expect(new UploadStateStore(dir).load()).rejects.toThrow();
+  });
+
+  it('treats an unparseable or foreign state as none', async () => {
     const file = path.join(dir, STATE_FILE_NAME);
     await fs.writeFile(file, '{"version":1,"cursor":');
     expect(await new UploadStateStore(dir).load()).toBeNull();
@@ -82,6 +87,12 @@ describe('PendingFile', () => {
 
   it('has nothing pending when there is no file', async () => {
     expect(await new PendingFile(path.join(dir, 'missing.jsonl')).read()).toEqual([]);
+  });
+
+  it('fails rather than dropping the pending fixes when the file cannot be read', async () => {
+    const file = path.join(dir, 'pending.jsonl');
+    await fs.mkdir(file);
+    await expect(new PendingFile(file).read()).rejects.toThrow();
   });
 
   it('keeps what is left in the 1.x format, and removes the file when nothing is', async () => {

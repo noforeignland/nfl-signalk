@@ -7,6 +7,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Type, type Static } from 'typebox';
 import { Value } from 'typebox/value';
+import { isMissingFile } from '../utils/errors';
 
 const FixSchema = Type.Object({
   time: Type.Number(),
@@ -36,16 +37,21 @@ export class UploadStateStore {
   }
 
   /**
-   * The saved state, or null when there is none. An unreadable state is also
-   * null: starting over from now loses at most the fixes since the last upload,
-   * where trusting a bad cursor could resend the whole recorded track.
+   * The saved state, or null when there is none. A state that does not parse
+   * or match is also null: starting over from now loses at most the fixes
+   * since the last upload, where trusting a bad cursor could resend the whole
+   * recorded track. A file that is there but cannot be read throws instead, so
+   * the pass fails and the next one tries again rather than starting over.
    */
   async load(): Promise<UploadState | null> {
     let text: string;
     try {
       text = await fs.readFile(this.file, 'utf8');
-    } catch {
-      return null;
+    } catch (error) {
+      if (isMissingFile(error)) {
+        return null;
+      }
+      throw error;
     }
     try {
       const parsed: unknown = JSON.parse(text);
