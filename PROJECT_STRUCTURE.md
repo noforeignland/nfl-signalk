@@ -1,356 +1,58 @@
 # Project Structure
 
-This document describes the architecture and organization of the SignalK to Noforeignland plugin.
+How the plugin is put together. `AGENTS.md` lists the modules and the conventions; this file explains how they work together.
 
-## Overview
-
-This plugin follows a modular architecture where each responsibility is encapsulated in a dedicated module. The main orchestrator ([index.js](index.js)) coordinates all modules through a class-based approach.
-
-## Directory Layout
+## Data flow
 
 ```
-nfl-signalk/
-  index.js                      # Main plugin entry point & orchestrator
-  cleanup-old-plugin.js         # Postinstall script for removing old versions
-  package.json                  # NPM package configuration
-  lib/                          # Core modules directory
-    ConfigManager.js            # Configuration handling & migration
-    TrackLogger.js              # Position subscription & logging
-    TrackSender.js              # API communication & track sending
-    HealthMonitor.js            # Position data health checks
-    PluginCleanup.js            # Runtime cleanup of old plugins
-    TrackMigration.js           # Track file migration utilities
-    DataPathEmitter.js          # SignalK delta emission
-    DirectoryUtils.js           # File system utilities
-  README.md                     # User documentation
-  PROJECT_STRUCTURE.md          # This file
+GNSS ──► Signal K server ──► Tracks plugin ──► its SQLite store (the own vessel's track)
+         (source priority                            │
+          picks one receiver)                        │ app.getTrackApi('tracks').getTracks(
+                                                     │   { contexts: ['vessels.self'], from, times: true })
+                                                     ▼
+                                  this plugin, every cron tick (TrackUploader.run)
+                                     │  fixes recorded after the cursor
+                                     │  ─► selectFixes: spacing, distance, speed
+                                     │  ─► chunks of 1000 ─► TrackSender ─► noforeignland.com
+                                     ▼
+                                  upload-state.json (cursor moves after each accepted chunk)
 ```
 
-## Module Responsibilities
+The plugin records nothing itself. It decides what of the recorded track to upload and remembers how far it got.
 
-### Core Orchestrator
+## Startup (`src/index.ts`)
 
-#### [index.js](index.js)
-**Purpose**: Main plugin class that orchestrates all modules and implements SignalK plugin lifecycle.
+1. Migrate a flat pre-1.1 configuration into the groups, flatten it and apply the defaults (`ConfigManager`, `configSchema`).
+2. Stop with a plugin error if there is no boat API key, or if the server has no Track API (signalk-server < 2.33).
+3. Create the data directory and wire up a `TrackUploader` with its dependencies: Tracks reader, NFL sender, state store, the 1.x pending file, and the live position.
+4. Schedule the upload pass on the (randomised) cron, plus one pass two minutes after start, which gives the Tracks plugin time to register.
+5. Start the GNSS health check, which reads `navigation.position` from the server.
 
-**Key Responsibilities**:
-- Exports SignalK plugin object with `start()` and `stop()` methods
-- Initializes all module instances in correct order
-- Manages plugin state (options, upSince, cron, lastSuccessfulTransfer)
-- Coordinates between modules during startup sequence
-- Handles plugin status and error reporting to SignalK UI
-- Implements CRON-based interval for data sending
+`stop()` cancels the cron, the delayed pass and the health check timers.
 
-**Key Methods**:
-- `start(options, restartPlugin)`: 13-step startup sequence
-- `stop()`: Cleanup and shutdown
-- `interval()`: CRON job handler for sending tracks
-- `handleSavePoint(lastPosition)`: Callback when track point is saved
-- `handleHealthy()`: Callback when health check passes
-- `setPluginStatus(status)`: Update UI status
-- `setPluginError(error)`: Report error to UI
+## One upload pass (`TrackUploader.run`)
 
-### Configuration & Migration
+1. Load `upload-state.json`. If there is none, this is the first pass after 1.x: upload its `pending.jsonl` in chunks, rewriting the file after each accepted chunk and removing it at the end. The cursor then starts at the last pending fix, or at now when nothing was pending.
+2. Ask the Tracks plugin for the own vessel's fixes recorded after the cursor.
+3. Keep the fixes worth uploading (`utils/trackFilter.ts`): at least `trackFrequency` seconds and `minMove` metres from the last uploaded fix, recorded at `minSpeed` knots or more from the fix before.
+4. If nothing qualifies and nothing went up for 24 hours, send one keep-alive: the newest recorded fix, or the live position.
+5. With `sendWhileMoving` off, hold back while the newest fix is recent; nothing is lost, the next pass picks it up.
+6. Upload in chunks of 1000. After each accepted chunk, save the cursor and the last uploaded fix. When everything went up, move the cursor past the fixes the filters left out too.
 
-#### [lib/ConfigManager.js](lib/ConfigManager.js)
-**Purpose**: Handles plugin configuration, schema definition, and config migration.
+A failed chunk throws. The plugin reports it in its status, and the next pass resumes after the last accepted chunk.
 
-**Key Responsibilities**:
-- Defines plugin schema (mandatory/advanced/expert settings groups)
-- Migrates old flat config structure to new nested structure
-- Flattens nested config back to internal format with defaults
-- Validates boat API key
-- Resolves track directory paths (absolute vs relative)
-- Randomizes CRON schedule to avoid server load spikes
+## Status
 
-**Config Structure**:
-```javascript
-{
-  mandatory: { boatApiKey: string },
-  advanced: { minMove, minSpeed, sendWhileMoving, ping_api_every_24h },
-  expert: { filterSource, trackDir, keepFiles, trackFrequency, apiCron,
-            internetTestTimeout, apiTimeout }
-}
-```
+`index.ts` keeps two messages. An upload error (no Tracks plugin, NFL rejected the track, network) outranks a GNSS warning from the health check, so a healthy GNSS cannot clear a message about the upload. Without either, the status reads `Save: <newest recorded fix> | Transfer: <last upload> | <source>`, and `DataPathEmitter` mirrors it to the `noforeignland.*` paths.
 
-### Position Tracking
+## Files on disk
 
-#### [lib/TrackLogger.js](lib/TrackLogger.js)
-**Purpose**: Subscribes to position updates and logs them to disk.
+Under the plugin's data directory, `<Signal K config>/plugin-config-data/signalk-to-noforeignland/`:
 
-**Key Responsibilities**:
-- Subscribes to `navigation.position` and optionally `navigation.speedOverGround`
-- Implements GNSS source auto-selection (stick to one source unless stale)
-- Supports manual source filtering via `filterSource` config
-- Validates positions (rejects coordinates near 0,0)
-- Applies movement filters (minSpeed, minMove, trackFrequency)
-- Implements 24-hour keepalive ping
-- Saves track points to JSONL file (`pending.jsonl`)
-- Calculates distances using equirectangular approximation
+| File | Written by | Purpose |
+| --- | --- | --- |
+| `upload-state.json` | `UploadState` | `cursor`, `previous`, `uploaded`; written atomically (temporary file + rename) |
+| `nfl-track/pending.jsonl` | 1.x | Fixes 1.x had not uploaded; drained once, then removed |
+| `nfl-track/sent.jsonl` | 1.x | Archive from "Keep track files on disk"; left alone (see README) |
 
-**GNSS Source Logic**:
-- If `filterSource` is set: only accept that specific source
-- If not set: auto-select first source, switch only if stale (>5 min)
-- Prevents position jumps when multiple GNSS devices are present
-
-**Track Point Format**:
-```json
-{"lat": 37.8136, "lon": -122.4784, "t": "2025-01-15T10:30:00.000Z"}
-```
-
-#### [lib/TrackSender.js](lib/TrackSender.js)
-**Purpose**: Sends accumulated track data to the Noforeignland API.
-
-**Key Responsibilities**:
-- Reads track points from `pending.jsonl`
-- Tests internet connectivity via DNS lookups (8.8.8.8, 1.1.1.1)
-- Checks if boat is moving (based on last position timestamp)
-- Sends track data to NFL API with retry logic (3 attempts)
-- Handles successful sends (archive to `sent.jsonl` or delete)
-- Validates position coordinates before sending
-
-**API Request Format**:
-```javascript
-POST https://www.noforeignland.com/home/api/v1/boat/tracking/track
-Headers: { 'X-NFL-API-Key': pluginApiKey }
-Body: {
-  timestamp: ms,
-  track: [[ms, lat, lon], [ms, lat, lon], ...],
-  boatApiKey: userBoatApiKey
-}
-```
-
-**Retry Logic**:
-- Attempt 1: base timeout (default 30s)
-- Attempt 2: 2x timeout + 2s delay
-- Attempt 3: 3x timeout + 4s delay
-
-### Health & Monitoring
-
-#### [lib/HealthMonitor.js](lib/HealthMonitor.js)
-**Purpose**: Monitors GNSS position data freshness and reports issues.
-
-**Key Responsibilities**:
-- Initial check: 2 minutes after startup
-- Periodic checks: every 5 minutes
-- Detects stale position data (>5 minutes old)
-- Detects missing position data
-- Provides context-aware error messages (filtered vs auto-selected source)
-- Calls error/healthy callbacks to update plugin status
-
-**Health States**:
-- Healthy: Position received within last 5 minutes
-- Warning: No position for >5 minutes
-- Error: No position ever received (or 2+ min after startup)
-
-### Cleanup & Migration
-
-#### [lib/PluginCleanup.js](lib/PluginCleanup.js)
-**Purpose**: Runtime cleanup of old plugin versions.
-
-**Key Responsibilities**:
-- Detects Victron Cerbo vs standard SignalK paths
-- Migrates config from old `signalk-to-noforeignland` to new scoped name
-- Removes old plugin directories (`signalk-to-noforeignland`, `signalk-to-nfl`)
-- Multiple retry attempts (immediate, 5s, 15s, 30s delays)
-- Falls back to manual instructions if removal fails
-- Returns promise resolving to 'all_removed' or 'partial_removal'
-
-**Old Plugins Removed**:
-- `signalk-to-noforeignland` (unscoped predecessor)
-- `signalk-to-nfl` (deprecated alias)
-
-#### [cleanup-old-plugin.js](cleanup-old-plugin.js)
-**Purpose**: Postinstall script for immediate cleanup during npm install.
-
-**Key Responsibilities**:
-- Runs via `npm postinstall` hook
-- Uses direct `fs.rmSync()` instead of npm uninstall (safer during install)
-- 2-second delay to allow npm to complete current operation
-- Detects Victron Cerbo vs standard SignalK paths
-- Migrates config files
-- Provides fallback manual instructions
-
-**Why Two Cleanup Mechanisms?**
-1. **Postinstall**: Runs during installation, removes old plugins immediately
-2. **Runtime**: Handles cases where postinstall failed (permissions, timing)
-
-#### [lib/TrackMigration.js](lib/TrackMigration.js)
-**Purpose**: Migrates track files from old naming/location schemes.
-
-**Key Responsibilities**:
-- Migrates old file names to new naming scheme:
-  - `nfl-track.jsonl` -> `pending.jsonl`
-  - `nfl-track-pending.jsonl` -> `pending.jsonl`
-  - `nfl-track-sent.jsonl` -> `sent.jsonl`
-- Migrates track files from old plugin directory to new data directory
-- Removes old track directory if empty
-- Non-destructive: only migrates if target doesn't exist
-
-### SignalK Integration
-
-#### [lib/DataPathEmitter.js](lib/DataPathEmitter.js)
-**Purpose**: Creates and updates SignalK data paths for external integrations.
-
-**Key Responsibilities**:
-- Emits SignalK deltas to create data paths
-- Updates status paths on state changes
-- Manages error state independently
-- Provides both ISO8601 and locale-formatted timestamps
-
-**Data Paths Created**:
-```
-noforeignland.savepoint             # ISO8601 timestamp of last save
-noforeignland.savepoint_local       # Locale string of last save
-noforeignland.sent_to_api           # ISO8601 timestamp of last API transfer
-noforeignland.sent_to_api_local     # Locale string of last API transfer
-noforeignland.status                # Status string (save/transfer/source info)
-noforeignland.status_boolean        # 0 = OK, 1 = error
-noforeignland.source                # Active GNSS source name
-```
-
-**Usage**: These paths can be consumed by Node-RED, KIP dashboards, or other SignalK consumers.
-
-#### [lib/DirectoryUtils.js](lib/DirectoryUtils.js)
-**Purpose**: File system utilities with proper error handling.
-
-**Key Responsibilities**:
-- Creates directories recursively
-- Checks read/write permissions
-- Provides context-specific error messages
-- Handles common error codes (EACCES, EPERM, ETIMEDOUT)
-
-## Data Flow
-
-### Startup Sequence
-```
-1. ConfigManager: Migrate old config -> flatten -> validate
-2. DirectoryUtils: Create track directory
-3. PluginCleanup: Remove old plugins (async, non-blocking)
-4. TrackMigration: Migrate old track files
-5. Initialize: TrackLogger, TrackSender, HealthMonitor
-6. ConfigManager: Randomize CRON schedule
-7. TrackLogger: Start position subscription
-8. CRON: Start interval job
-9. HealthMonitor: Start health checks
-```
-
-### Position Logging Flow
-```
-navigation.position delta
-  -> TrackLogger.doOnValue()
-    -> handleSourceSelection() [filter/auto-select]
-    -> isValidPosition() [validate lat/lon]
-    -> shouldLogPosition() [check distance/frequency]
-    -> savePoint() [append to pending.jsonl]
-    -> callback to index.handleSavePoint()
-      -> DataPathEmitter.emitSavepoint()
-      -> setPluginStatus()
-```
-
-### Track Sending Flow (CRON Interval)
-```
-CRON trigger
-  -> index.interval()
-    -> TrackSender.isBoatMoving() [check last position age]
-    -> TrackSender.hasTrackData() [check pending.jsonl exists]
-    -> TrackSender.testInternet() [DNS lookup test]
-    -> TrackSender.sendTrack()
-      -> createTrackFromFile() [read pending.jsonl]
-      -> sendWithRetry() [POST to API, 3 attempts]
-      -> handleSuccessfulSend() [archive or delete]
-    -> DataPathEmitter.emitApiTransfer()
-    -> setPluginStatus()
-```
-
-### Health Monitoring Flow
-```
-HealthMonitor timer (every 5 min)
-  -> performHealthCheck()
-    -> check lastPositionReceived timestamp
-    -> if stale/missing: call onError callback
-      -> index.setPluginError()
-        -> DataPathEmitter.setError()
-        -> app.setPluginError()
-    -> if healthy: call onHealthy callback
-      -> index.handleHealthy()
-        -> setPluginStatus() [clear error if needed]
-```
-
-## File Locations
-
-### Victron Cerbo GX
-- SignalK directory: `/data/conf/signalk`
-- Plugin installed at: `/data/conf/signalk/node_modules/@noforeignland/signalk-to-noforeignland`
-- Config: `/data/conf/signalk/plugin-config-data/@noforeignland-signalk-to-noforeignland.json`
-- Track files: `/data/conf/signalk/plugin-config-data/@noforeignland-signalk-to-noforeignland/nfl-track/`
-
-### Standard SignalK
-- SignalK directory: `~/.signalk`
-- Plugin installed at: `~/.signalk/node_modules/@noforeignland/signalk-to-noforeignland`
-- Config: `~/.signalk/plugin-config-data/@noforeignland-signalk-to-noforeignland.json`
-- Track files: `~/.signalk/plugin-config-data/@noforeignland-signalk-to-noforeignland/nfl-track/`
-
-## Development Notes
-
-### Adding New Features
-1. Create module in `lib/` if it's a distinct responsibility
-2. Instantiate in [index.js](index.js) constructor
-3. Initialize in `start()` method at appropriate step
-4. Clean up in `stop()` method
-5. Update this document
-
-### Configuration Changes
-1. Update schema in [ConfigManager.js](lib/ConfigManager.js) `getSchema()`
-2. Add migration logic in `migrateOldConfig()` if breaking change
-3. Update `flattenConfig()` to include new fields with defaults
-4. Test both old and new config formats
-
-### Track File Format Changes
-1. Update `TrackLogger.savePoint()` for writing
-2. Update `TrackSender.createTrackFromFile()` for reading
-3. Add migration logic in [TrackMigration.js](lib/TrackMigration.js) if needed
-
-### Testing Checklist
-- [ ] Test on Victron Cerbo GX (path detection, limited storage)
-- [ ] Test on standard SignalK installation
-- [ ] Test config migration from old versions
-- [ ] Test with multiple GNSS sources (auto-selection)
-- [ ] Test with filtered source
-- [ ] Test with no internet connection
-- [ ] Test with slow internet (timeout scenarios)
-- [ ] Test cleanup of old plugins
-- [ ] Test track file migration
-
-## Dependencies
-
-```json
-{
-  "cron": "^2.1.0",           // CRON job scheduling
-  "fs-extra": "^10.1.0",      // Enhanced file system operations
-  "node-fetch": "^2.6.7"      // HTTP requests to API
-}
-```
-
-## Version History Notes
-
-- **1.1.0**: Refactored to modular structure
-- **1.0.x**: Scoped package name, cleanup mechanism
-- **0.1.x**: Original flat structure (deprecated)
-
-## Known Technical Debt
-
-1. **Empty process.exit()**: [cleanup-old-plugin.js](cleanup-old-plugin.js) setTimeout may not complete
-2. **Error timing**: [PluginCleanup.js](lib/PluginCleanup.js) shows error before retries complete
-3. **No test suite**: Manual testing only, no automated tests
-
-## SignalK Plugin Conventions
-
-This plugin follows SignalK plugin conventions:
-- Exports function returning `{id, name, schema, start, stop}`
-- Uses `app.debug()` for logging
-- Uses `app.setPluginStatus()` and `app.setPluginError()` for UI feedback
-- Subscribes via `app.subscriptionmanager.subscribe()`
-- Emits deltas via `app.handleMessage(pluginId, delta)`
-- Config stored in `plugin-config-data/` directory
-- Data stored in plugin's data directory
+The Signal K config directory is `~/.signalk` on most installs and `/data/conf/signalk` on a Victron Cerbo GX.

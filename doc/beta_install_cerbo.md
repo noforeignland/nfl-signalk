@@ -5,6 +5,14 @@ This is written for a Victron Cerbo GX jump to the section you need want to go t
 It is recommended to enable the Debug Log for this plugin in Server -> Plugin Config before updating.
 
 
+# Which version for your Venus OS
+Version 2 of this plugin needs Signal K server 2.33 or later and the Tracks plugin. The Signal K version shows on the Admin UI's Dashboard. If your Venus OS bundles an older Signal K server, stay on version 1.4:
+
+```
+cd /data/conf/signalk
+npm i @noforeignland/signalk-to-noforeignland@1.4
+```
+
 # Pre-requirements
 On the Cerbo GUI enable SSH access and set a afmin password
 Windows User: Download putty (for ssh) and Winscp (for secure fie copy)

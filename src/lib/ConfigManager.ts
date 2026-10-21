@@ -2,7 +2,6 @@
  * Configuration management for the plugin
  */
 
-import path from 'node:path';
 import type { SignalKApp, PluginConfig, FlatConfig, ConfigSchema } from '../types';
 import { CONFIG_DEFAULTS, configSchema } from './configSchema';
 
@@ -37,9 +36,6 @@ export class ConfigManager {
             options.ping_api_every_24h !== undefined ? options.ping_api_every_24h : true,
         },
         expert: {
-          filterSource: options.filterSource,
-          trackDir: options.trackDir,
-          keepFiles: options.keepFiles !== undefined ? options.keepFiles : false,
           trackFrequency: options.trackFrequency !== undefined ? options.trackFrequency : 60,
           apiCron: options.apiCron || '*/10 * * * *',
           apiTimeout: options.apiTimeout !== undefined ? options.apiTimeout : 30,
@@ -80,13 +76,9 @@ export class ConfigManager {
       sendWhileMoving: options.advanced?.sendWhileMoving ?? CONFIG_DEFAULTS.sendWhileMoving,
       ping_api_every_24h:
         options.advanced?.ping_api_every_24h ?? CONFIG_DEFAULTS.ping_api_every_24h,
-      filterSource: options.expert?.filterSource,
-      trackDir: options.expert?.trackDir || CONFIG_DEFAULTS.trackDir,
-      keepFiles: options.expert?.keepFiles ?? CONFIG_DEFAULTS.keepFiles,
       trackFrequency: options.expert?.trackFrequency ?? CONFIG_DEFAULTS.trackFrequency,
       apiCron: options.expert?.apiCron || CONFIG_DEFAULTS.apiCron,
       apiTimeout: options.expert?.apiTimeout ?? CONFIG_DEFAULTS.apiTimeout,
-      maxVelocity: options.expert?.maxVelocity ?? CONFIG_DEFAULTS.maxVelocity,
     };
   }
 
@@ -101,16 +93,6 @@ export class ConfigManager {
           'noforeignland.com under Account > Settings > Boat tracking > API Key.'
       );
     }
-  }
-
-  /**
-   * Resolve track directory path (absolute or relative to data dir)
-   */
-  resolveTrackDir(config: FlatConfig, dataDirPath: string): string {
-    if (!path.isAbsolute(config.trackDir)) {
-      return path.join(dataDirPath, config.trackDir);
-    }
-    return config.trackDir;
   }
 
   /**

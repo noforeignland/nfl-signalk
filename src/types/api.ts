@@ -42,6 +42,8 @@ export interface ApiConfig {
 export const NFL_PLUGIN_API_KEY = '0ede6cb6-5213-45f5-8ab4-b4836b236f97';
 
 /**
- * NFL API endpoint
+ * NFL API endpoint. The NFL_API_URL environment variable replaces it, so an
+ * end-to-end test can point the plugin at a local stand-in.
  */
-export const NFL_API_URL = 'https://www.noforeignland.com/home/api/v1/boat/tracking/track';
+export const NFL_API_URL =
+  process.env.NFL_API_URL || 'https://www.noforeignland.com/home/api/v1/boat/tracking/track';

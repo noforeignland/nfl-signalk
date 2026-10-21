@@ -2,19 +2,12 @@
  * Sends track data to the NFL API
  */
 
-import fs from 'fs-extra';
 import https from 'node:https';
-import path from 'node:path';
-import readline from 'node:readline';
 import fetch, { Headers } from 'node-fetch';
-import type { SignalKApp, FlatConfig, SavedPosition, TrackData, NFLApiResponse } from '../types';
+import type { SignalKApp, FlatConfig, Fix, TrackData, NFLApiResponse } from '../types';
 import { NFL_PLUGIN_API_KEY, NFL_API_URL } from '../types/api';
-import { isValidLatitude, isValidLongitude } from '../utils/validation';
 import { describeFetchError } from '../utils/errors';
 
-/**
- * Custom error class to distinguish retryable from non-retryable errors
- */
 /**
  * Node >= 20 enables Happy Eyeballs with a 250 ms per-address connect cap.
  * The NFL API resolves to multiple addresses (Cloudflare dual-stack), so on
@@ -46,68 +39,29 @@ class ApiError extends Error {
 export class TrackSender {
   private app: SignalKApp;
   private options: FlatConfig;
-  private trackDir: string;
-  private routeSaveName = 'pending.jsonl';
-  private routeSentName = 'sent.jsonl';
 
-  constructor(app: SignalKApp, options: FlatConfig, trackDir: string) {
+  constructor(app: SignalKApp, options: FlatConfig) {
     this.app = app;
     this.options = options;
-    this.trackDir = trackDir;
   }
 
   /**
-   * Check if boat is currently moving
+   * Upload fixes as one track. Resolves once NFL has accepted them and throws
+   * otherwise, so a caller only counts them as sent when this returns.
    */
-  isBoatMoving(lastPosition: SavedPosition | null, upSince: number): boolean {
-    if (!this.options.trackFrequency) {
-      return true;
-    }
-
-    const time = lastPosition ? lastPosition.currentTime : upSince;
-    const secsSinceLastPoint = (Date.now() - time) / 1000;
-    const isMoving = secsSinceLastPoint <= this.options.trackFrequency * 2;
-
-    if (isMoving) {
-      this.app.debug('Boat is still moving, last move', secsSinceLastPoint, 'seconds ago');
-      return this.options.sendWhileMoving;
-    } else {
-      this.app.debug('Boat stopped moving, last move at least', secsSinceLastPoint, 'seconds ago');
-      return true;
-    }
-  }
-
-  /**
-   * Check if track file exists and has content
-   */
-  async hasTrackData(): Promise<boolean> {
-    const trackFile = path.join(this.trackDir, this.routeSaveName);
-    this.app.debug('checking the track', trackFile, 'if should send');
-
-    const exists = await fs.pathExists(trackFile);
-    const size = exists ? (await fs.lstat(trackFile)).size : 0;
-
-    this.app.debug(`'${trackFile}'.size=${String(size)} ${trackFile}'.exists=${String(exists)}`);
-    return size > 0;
-  }
-
-  /**
-   * Send track data to API
-   */
-  async sendTrack(): Promise<boolean> {
+  async sendFixes(fixes: readonly Fix[]): Promise<void> {
     if (!this.options.boatApiKey) {
       throw new Error('No boat API key set in plugin settings.');
     }
-
-    this.app.debug('sending the data');
-    const pendingFile = path.join(this.trackDir, this.routeSaveName);
-    const trackData = await this.createTrackFromFile(pendingFile);
-
-    if (!trackData) {
-      throw new Error('Recorded track did not contain any valid track points, aborting sending.');
+    const last = fixes.at(-1);
+    if (!last) {
+      return;
     }
 
-    this.app.debug('created track data with timestamp:', new Date(trackData.timestamp));
+    const trackData: TrackData = {
+      timestamp: last.time,
+      track: fixes.map((fix) => [fix.time, fix.latitude, fix.longitude]),
+    };
 
     const params = new URLSearchParams();
     params.append('timestamp', String(trackData.timestamp));
@@ -118,15 +72,11 @@ export class TrackSender {
     params.append('nodeVersion', NODE_VERSION);
 
     const headers = { 'X-NFL-API-Key': NFL_PLUGIN_API_KEY };
-    this.app.debug('sending track to API');
+    this.app.debug(`sending ${String(fixes.length)} fixes to the API`);
 
-    const success = await this.sendWithRetry(params, headers);
-
-    if (success) {
-      await this.handleSuccessfulSend(pendingFile);
+    if (!(await this.sendWithRetry(params, headers))) {
+      throw new Error('Track upload did not complete');
     }
-
-    return success;
   }
 
   /**
@@ -233,65 +183,6 @@ export class TrackSender {
     }
 
     return false;
-  }
-
-  /**
-   * Handle successful send (archive or delete track file)
-   */
-  async handleSuccessfulSend(pendingFile: string): Promise<void> {
-    const sentFile = path.join(this.trackDir, this.routeSentName);
-
-    try {
-      if (this.options.keepFiles) {
-        this.app.debug('Appending sent data to archive file:', this.routeSentName);
-        const pendingContent = await fs.readFile(pendingFile, 'utf8');
-        await fs.appendFile(sentFile, pendingContent);
-        this.app.debug('Successfully archived sent track data');
-      } else {
-        this.app.debug('keepFiles disabled, will delete pending file');
-      }
-
-      this.app.debug('Deleting pending track file');
-      await fs.remove(pendingFile);
-      this.app.debug('Successfully processed track files after send');
-    } catch (err) {
-      const error = err as Error;
-      this.app.debug('Error handling files after successful send:', error.message);
-    }
-  }
-
-  /**
-   * Create track data from file
-   */
-  async createTrackFromFile(inputPath: string): Promise<TrackData | null> {
-    const fileStream = fs.createReadStream(inputPath);
-    const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
-    const track: Array<[number, number, number]> = [];
-    let lastTimestamp = 0;
-
-    for await (const line of rl) {
-      if (line) {
-        try {
-          const point = JSON.parse(line) as { lat: unknown; lon: unknown; t: string };
-          const timestamp = new Date(point.t).getTime();
-
-          const lat = point.lat;
-          const lon = point.lon;
-          if (!isNaN(timestamp) && isValidLatitude(lat) && isValidLongitude(lon)) {
-            track.push([timestamp, lat, lon]);
-            lastTimestamp = timestamp;
-          }
-        } catch {
-          this.app.debug('could not parse line from track file:', line);
-        }
-      }
-    }
-
-    if (track.length > 0) {
-      return { timestamp: lastTimestamp, track };
-    }
-
-    return null;
   }
 }
 

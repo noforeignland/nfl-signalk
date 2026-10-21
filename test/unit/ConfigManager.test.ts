@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import path from 'node:path';
 import { ConfigManager } from '../../src/lib/ConfigManager';
 import { CONFIG_DEFAULTS } from '../../src/lib/configSchema';
 import type { FlatConfig, PluginConfig } from '../../src/types';
@@ -19,17 +18,13 @@ describe('ConfigManager.flattenConfig', () => {
   const manager = new ConfigManager(createMockApp());
 
   it('applies the defaults to an empty configuration', () => {
-    expect(manager.flattenConfig({})).toEqual({
-      ...CONFIG_DEFAULTS,
-      boatApiKey: '',
-      filterSource: undefined,
-    });
+    expect(manager.flattenConfig({})).toEqual({ ...CONFIG_DEFAULTS, boatApiKey: '' });
   });
 
   it('keeps an explicit 0 or false rather than the default', () => {
     const flat = manager.flattenConfig({
       advanced: { minMove: 0, minSpeed: 0, sendWhileMoving: false, ping_api_every_24h: false },
-      expert: { trackFrequency: 0, keepFiles: true },
+      expert: { trackFrequency: 0 },
     });
     expect(flat).toMatchObject({
       minMove: 0,
@@ -37,13 +32,11 @@ describe('ConfigManager.flattenConfig', () => {
       sendWhileMoving: false,
       ping_api_every_24h: false,
       trackFrequency: 0,
-      keepFiles: true,
     });
   });
 
-  it('treats an empty track directory or schedule as unset', () => {
-    const flat = manager.flattenConfig({ expert: { trackDir: '', apiCron: '' } });
-    expect(flat.trackDir).toBe(CONFIG_DEFAULTS.trackDir);
+  it('treats an empty schedule as unset', () => {
+    const flat = manager.flattenConfig({ expert: { apiCron: '' } });
     expect(flat.apiCron).toBe(CONFIG_DEFAULTS.apiCron);
   });
 });
@@ -71,22 +64,6 @@ describe('ConfigManager.validateApiKey', () => {
   });
 });
 
-describe('ConfigManager.resolveTrackDir', () => {
-  const manager = new ConfigManager(createMockApp());
-  const dataDir = path.resolve('/data/plugin');
-
-  it('places a relative directory under the data directory', () => {
-    const flat = manager.flattenConfig({ expert: { trackDir: 'tracks' } });
-    expect(manager.resolveTrackDir(flat, dataDir)).toBe(path.join(dataDir, 'tracks'));
-  });
-
-  it('keeps an absolute directory', () => {
-    const absolute = path.resolve('/var/nfl');
-    const flat = manager.flattenConfig({ expert: { trackDir: absolute } });
-    expect(manager.resolveTrackDir(flat, dataDir)).toBe(absolute);
-  });
-});
-
 describe('ConfigManager.randomizeCron', () => {
   const manager = new ConfigManager(createMockApp());
 
@@ -102,7 +79,7 @@ describe('ConfigManager.randomizeCron', () => {
 });
 
 describe('ConfigManager.migrateOldConfig', () => {
-  const legacy: PluginConfig = { boatApiKey: 'key', minMove: 10, trackDir: 'old' };
+  const legacy: PluginConfig = { boatApiKey: 'key', minMove: 10, apiTimeout: 60 };
 
   it('moves a flat configuration into the groups and saves it', async () => {
     const app = createMockApp();
@@ -111,7 +88,7 @@ describe('ConfigManager.migrateOldConfig', () => {
     expect(result.migrated).toBe(true);
     expect(result.options.mandatory?.boatApiKey).toBe('key');
     expect(result.options.advanced?.minMove).toBe(10);
-    expect(result.options.expert?.trackDir).toBe('old');
+    expect(result.options.expert?.apiTimeout).toBe(60);
     expect(app._mocks.savePluginOptions).toHaveBeenCalledWith(result.options, expect.any(Function));
   });
 
